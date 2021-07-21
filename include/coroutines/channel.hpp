@@ -114,6 +114,7 @@ namespace coroutines
             return value;
         }
         
+        ~bounded_channel() = default;
     private:
         std::queue<T> queue;
         std::condition_variable condition_variable;
