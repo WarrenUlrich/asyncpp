@@ -1,6 +1,5 @@
 #pragma once
 #include <coroutine>
-#include <experimental/generator>
 #include <vector>
 
 namespace coroutines
@@ -125,7 +124,10 @@ namespace coroutines
 
         iterator begin()
         {
-            this->handle.resume();
+            if(this->handle)
+                if(!this->handle.done())
+                    this->handle.resume();
+
             return iterator(this->handle);
         }
 
@@ -178,14 +180,14 @@ namespace coroutines
             return result;
         }
 
-        ~enumerable()
-        {
-            if(this->handle)
-                this->handle.destroy();
-        }
-
         private:
             handle_type handle;
+
+            ~enumerable()
+            {
+                if(this->handle)
+                    this->handle.destroy();
+            }
 
             template<class Predicate>
             static enumerable<ReturnType> where(enumerable<ReturnType> e, Predicate&& pred)

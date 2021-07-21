@@ -9,3 +9,5 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++20")
 add_library("coroutines" INTERFACE)
 
 target_include_directories("coroutines" INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+
+add_subdirectory(tests)
