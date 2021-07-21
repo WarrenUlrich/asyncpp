@@ -4,7 +4,7 @@
 
 namespace coroutines
 {
-    template <class ReturnType = void>
+    template <class T = void>
     class enumerable
     {
     public:
@@ -13,7 +13,7 @@ namespace coroutines
         class promise_type
         {
         public:
-            ReturnType current_value{};
+            T current_value{};
 
             auto get_return_object()
             {
@@ -39,13 +39,13 @@ namespace coroutines
             {
             }
 
-            auto yield_value(ReturnType &value) noexcept
+            auto yield_value(T &value) noexcept
             {
                 current_value = std::move(value);
                 return std::suspend_always{};
             }
 
-            auto yield_value(ReturnType &&value) noexcept
+            auto yield_value(T &&value) noexcept
             {
                 return yield_value(value);
             }
@@ -55,9 +55,9 @@ namespace coroutines
         {
             using iterator_category = std::forward_iterator_tag;
             using difference_type = std::ptrdiff_t;
-            using value_type = ReturnType;
-            using pointer = ReturnType *;
-            using reference = ReturnType &;
+            using value_type = T;
+            using pointer = T *;
+            using reference = T &;
 
         private:
             handle_type handle;
@@ -112,13 +112,13 @@ namespace coroutines
 
               };
 
-        enumerable(enumerable<ReturnType> &&other) noexcept
+        enumerable(enumerable<T> &&other) noexcept
             : handle(other.handle)
         {
             other.handle = nullptr;
         }
 
-        enumerable(const enumerable<ReturnType> &&) = delete;
+        enumerable(const enumerable<T> &&) = delete;
 
         iterator begin()
         {
@@ -136,20 +136,20 @@ namespace coroutines
 
         // Filters a sequence of values based on a predicate.
         template <class Predicate>
-        enumerable<ReturnType> where(Predicate &&pred)
+        enumerable<T> where(Predicate &&pred)
         {
             return where(std::move(*this), pred);
         }
 
         // Maps each element of a sequence into a new form.
         template <class Mapper>
-        enumerable<std::invoke_result_t<Mapper, ReturnType &>> map(Mapper &&m)
+        enumerable<std::invoke_result_t<Mapper, T &>> map(Mapper &&m)
         {
             return map(std::move(*this), m);
         }
 
         // Return the first element of a sequence.
-        ReturnType first()
+        T first()
         {
             for (auto &i : *this)
                 return i;
@@ -157,7 +157,7 @@ namespace coroutines
 
         // Returns the first element of a sequence that satisfies a predicate.
         template <class Predicate>
-        ReturnType first(Predicate &&pred)
+        T first(Predicate &&pred)
         {
             return first(std::move(*this), pred);
         }
@@ -170,9 +170,9 @@ namespace coroutines
             return temp;
         }
 
-        std::vector<ReturnType> collect()
+        std::vector<T> collect()
         {
-            std::vector<ReturnType> result{};
+            std::vector<T> result{};
             for (const auto &i : *this)
                 result.emplace_back(i);
             return result;
@@ -188,7 +188,7 @@ namespace coroutines
         }
 
         template <class Predicate>
-        static enumerable<ReturnType> where(enumerable<ReturnType> e, Predicate &&pred)
+        static enumerable<T> where(enumerable<T> e, Predicate &&pred)
         {
             for (auto &i : e)
                 if (pred(i))
@@ -197,14 +197,14 @@ namespace coroutines
 
         //Maps each element of a sequence into a new form.
         template <class Mapper>
-        static enumerable<std::invoke_result_t<Mapper, ReturnType &>> map(enumerable<ReturnType> e, Mapper &&m)
+        static enumerable<std::invoke_result_t<Mapper, T &>> map(enumerable<T> e, Mapper &&m)
         {
             for (auto &i : e)
                 co_yield m(i);
         }
 
         template <class Predicate>
-        static ReturnType first(enumerable<ReturnType> e, Predicate &&pred)
+        static T first(enumerable<T> e, Predicate &&pred)
         {
             for (auto &i : e)
                 if (pred(i))
