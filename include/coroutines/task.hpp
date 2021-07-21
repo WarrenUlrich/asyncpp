@@ -5,12 +5,10 @@
 
 namespace coroutines
 {
-    template<class T, class Scheduler>
+    template <class T, class Scheduler>
     class task_promise_type;
 
-    // Created tasks are "hot" or "eager", they immediately run on a seperate thread
-    // and the result can be awaited, or waited for with "result".
-    template<class T = void, class Scheduler = default_scheduler>
+    template <class T = void, class Scheduler = default_scheduler>
     class task
     {
     public:
@@ -22,10 +20,9 @@ namespace coroutines
         task(handle_type handle)
             : handle(handle)
         {
-
         }
 
-        task(task&& other) noexcept
+        task(task &&other) noexcept
             : handle(other.handle)
         {
             other.handle = nullptr;
@@ -52,7 +49,7 @@ namespace coroutines
         }
     };
 
-    template<class T, class Scheduler>
+    template <class T, class Scheduler>
     class task_promise_type
     {
     public:
@@ -76,7 +73,7 @@ namespace coroutines
 
         task<T, Scheduler> get_return_object()
         {
-            return { task<T, Scheduler>::handle_type::from_promise(*this) };
+            return {task<T, Scheduler>::handle_type::from_promise(*this)};
         }
 
         void unhandled_exception()
@@ -89,6 +86,7 @@ namespace coroutines
             if (exception)
                 std::rethrow_exception(std::move(exception));
         }
+
     private:
         class awaiter
         {
@@ -105,16 +103,15 @@ namespace coroutines
 
             constexpr void await_resume() const noexcept
             {
-
             }
         };
     };
 
-    template<class Scheduler>
+    template <class Scheduler>
     class task_promise_type<void, Scheduler>
     {
     public:
-        std::exception_ptr  exception = nullptr;
+        std::exception_ptr exception = nullptr;
 
         auto initial_suspend()
         {
@@ -130,7 +127,7 @@ namespace coroutines
 
         task<void, Scheduler> get_return_object()
         {
-            return { task<void, Scheduler>::handle_type::from_promise(*this) };
+            return {task<void, Scheduler>::handle_type::from_promise(*this)};
         }
 
         void unhandled_exception()
@@ -143,6 +140,7 @@ namespace coroutines
             if (exception)
                 std::rethrow_exception(std::move(exception));
         }
+
     private:
         class awaiter
         {
@@ -159,7 +157,6 @@ namespace coroutines
 
             constexpr void await_resume() const noexcept
             {
-
             }
         };
     };
