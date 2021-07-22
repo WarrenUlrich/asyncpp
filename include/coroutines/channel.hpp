@@ -185,10 +185,10 @@ namespace coroutines
             this->queue.pop();
             return true;
         }
-
-        task<T> try_read_async() override
+        
+        task<bool> try_read_async(T &value) override
         {
-            co_return this->try_read();
+            co_return this->try_read(value);
         }
 
         T wait() override
