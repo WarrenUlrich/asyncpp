@@ -1,6 +1,7 @@
 #pragma once
 #include <queue>
 #include <mutex>
+#include "task.hpp"
 
 namespace coroutines
 {
@@ -14,9 +15,24 @@ namespace coroutines
     class channel
     {
     public:
+        channel() = default;
+        channel(const channel &) = delete;
+        channel(channel &&) = default;
+
+        channel &operator=(const channel &) = delete;
+        channel &operator=(channel &&) = default;
+
         virtual bool try_write(T const &value) = 0;
+        virtual bool try_write(T &&value) = 0;
+
+        virtual task<bool> try_write_async(T const &value) = 0;
+        virtual task<bool> try_write_async(T &&value) = 0;
+
         virtual bool try_read(T &value) = 0;
+        virtual task<bool> try_read_async(T &value) = 0;
+
         virtual T wait() = 0;
+        virtual task<T> wait_async() = 0;
 
         static std::unique_ptr<channel<T>> make_unbounded()
         {
@@ -36,7 +52,14 @@ namespace coroutines
     {
     public:
         unbounded_channel() = default;
-        bool try_write(T const &value)
+
+        unbounded_channel(unbounded_channel const &) = delete;
+        unbounded_channel(unbounded_channel &&) = delete;
+
+        unbounded_channel &operator=(unbounded_channel const &) = delete;
+        unbounded_channel &operator=(unbounded_channel &&) = delete;
+
+        bool try_write(T const &value) override
         {
             std::unique_lock<std::mutex> lock(this->mutex);
             this->queue.push(value);
@@ -45,7 +68,26 @@ namespace coroutines
             return true;
         }
 
-        bool try_read(T &value)
+        bool try_write(T &&value) override
+        {
+            std::unique_lock<std::mutex> lock(this->mutex);
+            this->queue.push(std::move(value));
+            lock.unlock();
+            this->condition_variable.notify_one();
+            return true;
+        }
+
+        task<bool> try_write_async(T const &value) override
+        {
+            co_return this->try_write(value);
+        }
+
+        task<bool> try_write_async(T &&value) override
+        {
+            co_return this->try_write(std::move(value));
+        }
+
+        bool try_read(T &value) override
         {
             const std::lock_guard<std::mutex> lock(this->mutex);
             if (this->queue.empty())
@@ -56,7 +98,12 @@ namespace coroutines
             return true;
         }
 
-        T wait()
+        task<bool> try_read_async(T &value) override
+        {
+            co_return this->try_read(value);
+        }
+
+        T wait() override
         {
             std::unique_lock<std::mutex> lock(this->mutex);
             this->condition_variable.wait(lock, [&]()
@@ -64,6 +111,11 @@ namespace coroutines
             auto value = this->queue.front();
             this->queue.pop();
             return value;
+        }
+
+        task<T> wait_async() override
+        {
+            co_return this->wait();
         }
 
         ~unbounded_channel() = default;
@@ -83,7 +135,13 @@ namespace coroutines
         {
         }
 
-        bool try_write(T const &value)
+        bounded_channel(bounded_channel const &) = delete;
+        bounded_channel(bounded_channel &&) = delete;
+
+        bounded_channel &operator=(bounded_channel const &) = delete;
+        bounded_channel &operator=(bounded_channel &&) = delete;
+
+        bool try_write(T const &value) override
         {
             std::unique_lock<std::mutex> lock(this->mutex);
             if (this->queue.size() >= this->capacity)
@@ -95,7 +153,29 @@ namespace coroutines
             return true;
         }
 
-        bool try_read(T &value)
+        bool try_write(T &&value) override
+        {
+            std::unique_lock<std::mutex> lock(this->mutex);
+            if (this->queue.size() >= this->capacity)
+                return false;
+
+            this->queue.push(std::move(value));
+            lock.unlock();
+            this->condition_variable.notify_one();
+            return true;
+        }
+
+        task<bool> try_write_async(T const &value) override
+        {
+            co_return this->try_write(value);
+        }
+
+        task<bool> try_write_async(T &&value) override
+        {
+            co_return this->try_write(std::move(value));
+        }
+
+        bool try_read(T &value) override
         {
             const std::lock_guard<std::mutex> lock(this->mutex);
             if (this->queue.empty())
@@ -106,7 +186,12 @@ namespace coroutines
             return true;
         }
 
-        T wait()
+        task<T> try_read_async() override
+        {
+            co_return this->try_read();
+        }
+
+        T wait() override
         {
             std::unique_lock<std::mutex> lock(this->mutex);
             this->condition_variable.wait(lock, [&]()
@@ -114,6 +199,11 @@ namespace coroutines
             auto value = this->queue.front();
             this->queue.pop();
             return value;
+        }
+
+        task<T> wait_async() override
+        {
+            co_return this->wait();
         }
 
         ~bounded_channel() = default;

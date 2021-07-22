@@ -1,39 +1,20 @@
 #pragma once
 #include <coroutine>
-#include "channel.hpp"
 #include <vector>
 #include <iostream>
 
 namespace coroutines
 {
+    template <class T>
+    class channel;
+
     class default_scheduler
     {
     public:
         default_scheduler() = default;
-        default_scheduler(std::size_t thread_count)
-        {
-            for (std::size_t i = 0; i < thread_count; ++i)
-            {
-                this->workers.emplace_back(std::thread([this]()
-                                                       {
-                                                           while (true)
-                                                           {
-                                                               if (this->finished)
-                                                                   break;
+        default_scheduler(std::size_t thread_count);
 
-                                                               auto handle = this->queued_work.wait();
-                                                               handle.resume();
-                                                               if (handle.done())
-                                                                   handle.destroy();
-                                                           }
-                                                       }));
-            }
-        }
-
-        void schedule(std::coroutine_handle<> coroutine)
-        {
-            queued_work.try_write(coroutine);
-        }
+        void schedule(std::coroutine_handle<> coroutine);
 
         static default_scheduler &instance()
         {
@@ -55,6 +36,6 @@ namespace coroutines
     private:
         std::atomic<bool> finished = false;
         std::vector<std::thread> workers;
-        unbounded_channel<std::coroutine_handle<>> queued_work;
+        std::unique_ptr<channel<std::coroutine_handle<>>> queued_work;
     };
 }

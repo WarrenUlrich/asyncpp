@@ -178,14 +178,14 @@ namespace coroutines
             return result;
         }
 
-    private:
-        handle_type handle;
-
         ~enumerable()
         {
             if (this->handle)
                 this->handle.destroy();
         }
+
+    private:
+        handle_type handle;
 
         template <class Predicate>
         static enumerable<T> where(enumerable<T> e, Predicate &&pred)
