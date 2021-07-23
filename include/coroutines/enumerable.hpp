@@ -59,12 +59,12 @@ namespace coroutines
             {
             }
 
-            reference operator*() const
+            T &operator*() const
             {
                 return this->_handle.promise().current_value;
             }
 
-            pointer operator->()
+            T *operator->()
             {
                 return &this->_handle.promise().current_value;
             }
@@ -96,11 +96,6 @@ namespace coroutines
             }
 
         private:
-            using iterator_category = std::forward_iterator_tag;
-            using difference_type = std::ptrdiff_t;
-            using value_type = T;
-            using pointer = T *;
-            using reference = T &;
             handle_type _handle;
         };
 
