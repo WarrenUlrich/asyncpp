@@ -53,40 +53,31 @@ namespace coroutines
 
         class iterator
         {
-            using iterator_category = std::forward_iterator_tag;
-            using difference_type = std::ptrdiff_t;
-            using value_type = T;
-            using pointer = T *;
-            using reference = T &;
-
-        private:
-            handle_type handle;
-
         public:
             iterator(handle_type handle)
-                : handle(handle)
+                : _handle(handle)
             {
             }
 
             reference operator*() const
             {
-                return this->handle.promise().current_value;
+                return this->_handle.promise().current_value;
             }
 
             pointer operator->()
             {
-                return &this->handle.promise().current_value;
+                return &this->_handle.promise().current_value;
             }
 
             iterator &operator++()
             {
-                this->handle.resume();
+                this->_handle.resume();
                 return *this;
             }
 
             friend bool operator==(const iterator &it, std::default_sentinel_t s) noexcept
             {
-                return !it.handle || it.handle.done();
+                return !it._handle || it._handle.done();
             }
 
             friend bool operator!=(const iterator &it, std::default_sentinel_t s) noexcept
@@ -103,30 +94,38 @@ namespace coroutines
             {
                 return it != s;
             }
+
+        private:
+            using iterator_category = std::forward_iterator_tag;
+            using difference_type = std::ptrdiff_t;
+            using value_type = T;
+            using pointer = T *;
+            using reference = T &;
+            handle_type _handle;
         };
 
         enumerable() = delete;
 
         enumerable(handle_type h)
-            : handle(h){
+            : _handle(h){
 
               };
 
         enumerable(enumerable<T> &&other) noexcept
-            : handle(other.handle)
+            : _handle(other._handle)
         {
-            other.handle = nullptr;
+            other._handle = nullptr;
         }
 
         enumerable(const enumerable<T> &&) = delete;
 
         iterator begin()
         {
-            if (this->handle)
-                if (!this->handle.done())
-                    this->handle.resume();
+            if (this->_handle)
+                if (!this->_handle.done())
+                    this->_handle.resume();
 
-            return iterator(this->handle);
+            return iterator(this->_handle);
         }
 
         std::default_sentinel_t end()
@@ -180,12 +179,12 @@ namespace coroutines
 
         ~enumerable()
         {
-            if (this->handle)
-                this->handle.destroy();
+            if (this->_handle)
+                this->_handle.destroy();
         }
 
     private:
-        handle_type handle;
+        handle_type _handle;
 
         template <class Predicate>
         static enumerable<T> where(enumerable<T> e, Predicate &&pred)

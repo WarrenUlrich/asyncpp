@@ -5,8 +5,11 @@
 
 namespace coroutines
 {
-    // template <class T, class Scheduler>
-    // class task_promise_type;
+    template <typename T>
+    concept CoroutineScheduler = requires(std::coroutine_handle<> h)
+    {
+        {T::instance().schedule(h)};
+    };
 
     template <class T = void, class Scheduler = default_scheduler>
     class task
@@ -71,7 +74,7 @@ namespace coroutines
                     return false;
                 }
 
-                constexpr void await_suspend(std::coroutine_handle<> h) const noexcept
+                constexpr void await_suspend(handle_type h) const noexcept
                 {
                     Scheduler::instance().schedule(h);
                 }
@@ -102,7 +105,8 @@ namespace coroutines
             return handle.done();
         }
 
-        bool await_suspend(std::coroutine_handle<promise_type> handle)
+        //etmplate<class HandleT>
+        bool await_suspend(std::coroutine_handle<> handle)
         {
             return false;
         }
@@ -177,7 +181,7 @@ namespace coroutines
                     return false;
                 }
 
-                constexpr void await_suspend(std::coroutine_handle<> h) const noexcept
+                constexpr void await_suspend(handle_type h) const noexcept
                 {
                     Scheduler::instance().schedule(h);
                 }
@@ -206,7 +210,7 @@ namespace coroutines
             return handle.done();
         }
 
-        bool await_suspend(std::coroutine_handle<promise_type> handle)
+        bool await_suspend(handle_type handle)
         {
             return false;
         }
