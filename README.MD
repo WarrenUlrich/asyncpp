@@ -1,5 +1,5 @@
-# coroutines
-Some useful generic classes taking advantage of C++20 coroutines.
+# async++
+Some useful generic classes taking advantage of C++20 and coroutines.
 
 Currently includes:
 * [`task<T>`](#taskt)
