@@ -266,7 +266,7 @@ namespace async
         iterator &operator++()
         {
             this->_handle.resume();
-            
+
             if (this->_handle.done())
                 this->_handle.promise().rethrow_if_unhandled_exception();
             return *this;

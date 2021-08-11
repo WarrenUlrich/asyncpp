@@ -2,7 +2,6 @@
 #include <atomic>
 #include <memory>
 #include <optional>
-#include <iostream>
 #include "queue_exceptions.hpp"
 
 namespace async

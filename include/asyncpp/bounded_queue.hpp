@@ -15,7 +15,7 @@ namespace async
     {
     public:
         bounded_queue() : _head(0), _tail(0) {}
-        
+
         /**
          * @brief Pushes a value to the queue, throws queue_full_exception if full.
          * @param[in] item The value to push.
@@ -92,7 +92,6 @@ namespace async
         }
 
     private:
-    
         T _data[NodeCapacity + 1];
         std::atomic<std::size_t> _head;
         std::atomic<std::size_t> _tail;
