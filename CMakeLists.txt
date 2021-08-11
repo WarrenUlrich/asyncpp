@@ -10,4 +10,4 @@ add_library("asyncpp" INTERFACE)
 
 target_include_directories("asyncpp" INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/include")
 
-add_subdirectory(tests)
+add_subdirectory(local/tests)

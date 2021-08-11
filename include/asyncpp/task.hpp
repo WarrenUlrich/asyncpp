@@ -18,7 +18,7 @@ namespace async
 
         task(task &&other) noexcept : _handle(std::move(other._handle)) {}
 
-        T get() noexcept
+        T get()
         {
             return _handle.promise().get();
         }
@@ -90,6 +90,7 @@ namespace async
         void unhandled_exception()
         {
             _exception = std::current_exception();
+            _value_ready.release();
         }
 
         void rethrow_if_unhandled_exception()
@@ -101,9 +102,10 @@ namespace async
         /**
          * @brief Waits for the task to complete and returns the result.
          */
-        T get() noexcept
+        T get()
         {
             _value_ready.acquire();
+            rethrow_if_unhandled_exception();
             return std::move(_value);
         }
 

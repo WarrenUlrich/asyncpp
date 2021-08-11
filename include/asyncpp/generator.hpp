@@ -1,37 +1,70 @@
 #pragma once
 #include <coroutine>
 #include <vector>
+#include <iostream>
 
 namespace async
 {
-    template <class T = void>
-    class enumerable
+    /**
+     * @brief Represents a sequence of values
+     */
+    template <class T>
+    class generator
     {
     public:
         class promise_type;
         using handle_type = std::coroutine_handle<promise_type>;
         class iterator;
 
-        enumerable() = delete;
+        generator() = delete;
 
-        enumerable(handle_type h)
+        generator(handle_type h)
             : _handle(h){
 
               };
 
-        enumerable(enumerable<T> &&other) noexcept
+        generator(generator<T> &&other) noexcept
             : _handle(other._handle)
         {
             other._handle = nullptr;
         }
 
-        enumerable(const enumerable<T> &&) = delete;
+        generator<T> &operator=(generator<T> &&other) noexcept
+        {
+            _handle = other._handle;
+            other._handle = nullptr;
+            return *this;
+        }
+
+        template <std::ranges::range Range>
+        generator(const Range &r)
+        {
+            *this = [](auto &range) -> generator<T>
+            {
+                for (auto &i : range)
+                    co_yield i;
+            }(r);
+        }
+
+        template <std::ranges::range Range>
+        generator(Range &&r)
+        {
+            *this = [](auto range) -> generator<T>
+            {
+                for (auto &i : range)
+                    co_yield i;
+            }(std::move(r));
+        }
 
         iterator begin()
         {
             if (this->_handle)
                 if (!this->_handle.done())
                     this->_handle.resume();
+
+            auto exception = std::current_exception();
+            if (exception)
+                std::rethrow_exception(exception);
 
             return iterator(this->_handle);
         }
@@ -47,7 +80,7 @@ namespace async
          * @return A new enumerable sequence containing the filtered values.
          */
         template <class Predicate>
-        enumerable<T> where(Predicate &&pred)
+        generator<T> where(Predicate &&pred)
         {
             return where(std::move(*this), pred);
         }
@@ -58,7 +91,7 @@ namespace async
          * @return A new enumerable sequence containing the projected values.
          */
         template <class Mapper>
-        enumerable<std::invoke_result_t<Mapper, T &>> map(Mapper &&mapper)
+        generator<std::invoke_result_t<Mapper, T &>> map(Mapper &&mapper)
         {
             return map(std::move(*this), mapper);
         }
@@ -108,7 +141,7 @@ namespace async
             return result;
         }
 
-        ~enumerable()
+        ~generator()
         {
             if (this->_handle)
                 this->_handle.destroy();
@@ -118,7 +151,7 @@ namespace async
         handle_type _handle;
 
         template <class Predicate>
-        static enumerable<T> where(enumerable<T> e, Predicate &&pred)
+        static generator<T> where(generator<T> e, Predicate &&pred)
         {
             for (auto &i : e)
                 if (pred(i))
@@ -126,14 +159,14 @@ namespace async
         }
 
         template <class Mapper>
-        static enumerable<std::invoke_result_t<Mapper, T &>> map(enumerable<T> e, Mapper &&m)
+        static generator<std::invoke_result_t<Mapper, T &>> map(generator<T> e, Mapper &&m)
         {
             for (auto &i : e)
                 co_yield m(i);
         }
 
         template <class Predicate>
-        static T first(enumerable<T> e, Predicate &&pred)
+        static T first(generator<T> e, Predicate &&pred)
         {
             for (auto &i : e)
                 if (pred(i))
@@ -142,7 +175,7 @@ namespace async
     };
 
     template <>
-    class enumerable<void>
+    class generator<void>
     {
     public:
         /**
@@ -152,35 +185,25 @@ namespace async
          * @return A new enumerable sequence of integers.
          */
         template <std::integral Integral>
-        static enumerable<Integral> range(Integral to, Integral from)
+        static generator<Integral> range(Integral to, Integral from)
         {
             for (Integral i = to; i <= from; ++i)
-                co_yield i;
-        }
-
-        /**
-         * @brief Iterates a std::ranges::range object and yields the values.
-         * @param range The range to iterate.
-         * @return A new enumerable sequence of values.
-         */
-        template <std::ranges::range R>
-        static enumerable<std::ranges::range_value_t<R>> from(R &range)
-        {
-            for (auto &i : range)
                 co_yield i;
         }
     };
 
     template <typename T>
-    class enumerable<T>::promise_type
+    class generator<T>::promise_type
     {
     public:
-        T current_value{};
+        T current_value;
+        std::exception_ptr exception;
+
+        promise_type() : current_value{}, exception{nullptr} {}
 
         auto get_return_object()
         {
-
-            return enumerable{handle_type::from_promise(*this)};
+            return generator{handle_type::from_promise(*this)};
         }
 
         auto initial_suspend()
@@ -195,27 +218,34 @@ namespace async
 
         void unhandled_exception()
         {
-            // TODO:
+            exception = std::current_exception();
+        }
+
+        void rethrow_if_unhandled_exception()
+        {
+            if (exception)
+                std::rethrow_exception(exception);
         }
 
         void return_void()
         {
         }
 
-        auto yield_value(T &value) noexcept
+        auto yield_value(T const &value) noexcept
         {
-            current_value = std::move(value);
+            current_value = value;
             return std::suspend_always{};
         }
 
         auto yield_value(T &&value) noexcept
         {
-            return yield_value(value);
+            current_value = std::move(value);
+            return std::suspend_always{};
         }
     };
 
     template <typename T>
-    class enumerable<T>::iterator
+    class generator<T>::iterator
     {
     public:
         iterator(handle_type handle)
@@ -236,6 +266,9 @@ namespace async
         iterator &operator++()
         {
             this->_handle.resume();
+            
+            if (this->_handle.done())
+                this->_handle.promise().rethrow_if_unhandled_exception();
             return *this;
         }
 

@@ -3,6 +3,7 @@
 #include <memory>
 #include <optional>
 #include <iostream>
+#include "queue_exceptions.hpp"
 
 namespace async
 {
@@ -49,7 +50,7 @@ namespace async
             }
         }
 
-        void push(T const &item)
+        void push(const T &item)
         {
             auto tail = _tail.load();
             if (tail->try_push(item)) // Buffer still usable?
@@ -80,12 +81,16 @@ namespace async
             }
         }
 
-        std::optional<T> try_pop()
+        /**
+         * @return The next item in the queue.
+         * @throws async::queue_empty_exception if the queue is empty.
+         */
+        T pop()
         {
             auto head = _head.load();
             auto item = head->try_pop();
-            if (item) // Current buffer still has data?
-                return item;
+            if(item)
+                return *item;
 
             // Slow route, we need to move to the next buffer
             while (true)
@@ -99,24 +104,44 @@ namespace async
                     if (head == tail)
                     {
                         if (next == nullptr)
-                            return std::nullopt;
+                            throw queue_empty_exception();
 
                         _tail.compare_exchange_strong(tail, next);
                     }
                     else
                     {
                         if (next == nullptr)
-                            return std::nullopt;
+                            throw queue_empty_exception();
 
                         if (_head.compare_exchange_strong(head, next))
                         {
-                            return next->try_pop();
+                            return next->pop();
                         }
                     }
                 }
             }
 
-            return std::nullopt;
+            throw queue_empty_exception();
+        }
+
+        /**
+         * @return The current size of the queue.
+         */
+        std::size_t size() const
+        {
+            auto head = _head.load();
+            std::size_t count = 0;
+            while (head != nullptr)
+            {
+                count += head->size();
+                head = head->next.load();
+            }
+            return count;
+        }
+
+        bool empty() const
+        {
+            return this->size() == 0;
         }
 
     private:
@@ -125,7 +150,6 @@ namespace async
         std::atomic<std::shared_ptr<ring_node>> _head;
         std::atomic<std::shared_ptr<ring_node>> _tail;
     };
-
 
     /**
      * A ring buffer node, it's a linked list of buffers, it's used to implement the queue,
@@ -158,7 +182,7 @@ namespace async
             return true;
         }
 
-        bool try_push(T const &item)
+        bool try_push(const T &item)
         {
             auto tail = _tail.load();
             auto head = _head.load();
@@ -185,11 +209,24 @@ namespace async
 
             // Check if the head is still consistent, if it is, we can just update the head, if not we retry the entire operation.
             if (!_head.compare_exchange_strong(head, (head + 1) % NodeCapacity))
-                return try_pop();
+                return pop();
 
             // Succeeeded, so we're safe to grab the data.
             auto item = std::move(_data[head]);
             return item;
+        }
+
+        std::size_t size() const
+        {
+            auto tail = _tail.load();
+            auto head = _head.load();
+
+            if (head > tail)
+                return head - tail;
+            else if (head == tail)
+                return 0;
+            else
+                return (tail - head);
         }
 
     private:

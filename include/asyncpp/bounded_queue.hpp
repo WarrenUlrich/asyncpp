@@ -2,6 +2,7 @@
 #include <optional>
 #include <atomic>
 #include <iostream>
+#include "queue_exceptions.hpp"
 
 namespace async
 {
@@ -14,66 +15,64 @@ namespace async
     {
     public:
         bounded_queue() : _head(0), _tail(0) {}
-
+        
         /**
-         * @brief Pushes a value to the queue.
+         * @brief Pushes a value to the queue, throws queue_full_exception if full.
          * @param[in] item The value to push.
          * @return A boolean value indicating whether the operation was successful, the operation is only unsuccessful if the queue is full.
+         * @throw queue_full_exception when the queue is full.
          */
-        bool try_push(T &&item)
+        void push(T &&item)
         {
             auto tail = _tail.load();
 
             // full
             if ((tail + 1) % NodeCapacity == _head.load())
-                return false;
+                throw queue_full_exception();
 
             // retry if we couldn't update the tail in time.
             if (!_tail.compare_exchange_strong(tail, (tail + 1) % NodeCapacity))
-                return try_push(std::forward<T>(item));
+                return push(std::forward<T>(item));
 
             _data[tail] = std::move(item);
-            return true;
         }
 
         /**
-         * @brief Pushes a value to the queue.
+         * @brief Pushes a value to the queue, throws queue_full_exception if full.
          * @param[in] item The value to push.
          * @return A boolean value indicating whether the operation was successful, the operation is only unsuccessful if the queue is full.
+         * @throw queue_full_exception when the queue is full.
          */
-        bool try_push(T const &item)
+        void push(T const &item)
         {
             auto tail = _tail.load();
 
             // full
             if ((tail + 1) % NodeCapacity == _head.load())
-                return false;
+                throw queue_full_exception();
 
             // retry if we couldn't update the tail in time.
             if (!_tail.compare_exchange_strong(tail, (tail + 1) % NodeCapacity))
                 return try_push(item);
 
             _data[tail] = item;
-            return true;
         }
 
         /**
-         * @brief Pops a value from the queue.
-         * @return A optional<T> value that contains the value that was pooped, if the queue is empty, it's a nullopt.
+         * @return A optional<T> value that contains the value that was popped, if the queue is empty, it's a nullopt.
+         * @throw queue_empty if the queue is empty.
          */
-        std::optional<T> try_pop()
+        T pop()
         {
             auto head = _head.load();
 
             // empty
             if (head == _tail.load())
-                return std::nullopt;
+                throw queue_empty_exception();
 
             // retry if we couldn't update the head in time.
             if (!_head.compare_exchange_strong(head, (head + 1) % NodeCapacity))
-            {
-                return try_pop();
-            }
+                return pop();
 
             auto item = _data[head];
             return item;
@@ -93,7 +92,8 @@ namespace async
         }
 
     private:
-        T _data[NodeCapacity];
+    
+        T _data[NodeCapacity + 1];
         std::atomic<std::size_t> _head;
         std::atomic<std::size_t> _tail;
     };
