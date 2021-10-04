@@ -25,6 +25,33 @@ Currently includes:
         T get() ...
     };
 ```
+## Examples
+```c++
+#include <iostream>
+#include <asyncpp/task.hpp>
+
+async::task<int> simulate_work()
+{
+    std::cout << "simulate_work: " << std::this_thread::get_id() << std::endl;
+    std::this_thread::sleep_for(std::chrono::seconds(10));
+    co_return 42;
+}
+
+async::task<> other_work()
+{
+    auto t = simulate_work();
+    auto res = co_await t; // We may use co_await inside of a coroutine.
+    co_return;
+}
+
+int main()
+{
+    auto t = simulate_work(); // simulate_work is executed in a separate thread
+    std::cout << "main: " << std::this_thread::get_id() << std::endl;
+    return t.get(); // Have to use get to wait for the task to finish, rather than co_await.
+}
+```
+
 ## `generator<T>`
 ```c++
     /**
@@ -113,7 +140,31 @@ Currently includes:
         static generator<Integral> range(Integral to, Integral from) ...
     };
 ```
+## Examples
 
+```c++
+    #include <iostream>
+    #include <asyncpp/generator.hpp>
+
+    async::generator<int> lots_of_numbers()
+    {
+        for (auto i = 0; i < 10000; ++i)
+            co_yield i; // support for co_yield in C++20
+    }
+
+    async::generator<int> lots_of_odd_numbers()
+    {
+        return lots_of_numbers().where([](int i) { return i % 2 == 1; }); // C# LINQ like functionality.
+    }
+
+    int main()
+    {
+        for(auto& i : lots_of_odd_numbers())
+            std::cout << i << '\n';
+
+        return 1;
+    }
+```
 ## `queue<T>`
 ```c++
     /**
