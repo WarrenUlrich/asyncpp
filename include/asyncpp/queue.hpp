@@ -12,12 +12,20 @@ namespace async
      * full, then the tail moves on and creates a new buffer.
      */
 
+    /**
+     * @brief A lock-free queue implementation.
+     */
     template <typename T, std::size_t NodeCapacity = 1024>
     class queue
     {
     public:
         queue() : _head(std::make_shared<ring_node>()), _tail(_head.load(std::memory_order_relaxed)) {}
 
+        /**
+         * @brief Pushes an element to the queue
+         * @param item The item to push
+         * @throws queue_full_exception if the queue is full.
+         */
         void push(T &&item)
         {
             auto tail = _tail.load();
@@ -49,6 +57,11 @@ namespace async
             }
         }
 
+        /**
+         * @brief Pushes an element to the queue
+         * @param item The item to push
+         * @throws queue_full_exception if the queue is full.
+         */
         void push(const T &item)
         {
             auto tail = _tail.load();
@@ -81,46 +94,50 @@ namespace async
         }
 
         /**
+         * @brief Pops an element from the queue
          * @return The next item in the queue.
-         * @throws async::queue_empty_exception if the queue is empty.
+         * @throws queue_empty_exception if the queue is empty.
          */
         T pop()
         {
-            auto head = _head.load();
-            auto item = head->try_pop();
-            if(item)
-                return *item;
-
-            // Slow route, we need to move to the next buffer
-            while (true)
+            try
             {
                 auto head = _head.load();
-                auto tail = _tail.load();
-                const auto next = head->next.load();
-
-                if (head == _head.load())
+                auto item = head->pop();
+                return item;
+            }
+            catch (queue_empty_exception &)
+            {
+                // Slow route, we need to move to the next buffer
+                while (true)
                 {
-                    if (head == tail)
-                    {
-                        if (next == nullptr)
-                            throw queue_empty_exception();
+                    auto head = _head.load();
+                    auto tail = _tail.load();
+                    const auto next = head->next.load();
 
-                        _tail.compare_exchange_strong(tail, next);
-                    }
-                    else
+                    if (head == _head.load())
                     {
-                        if (next == nullptr)
-                            throw queue_empty_exception();
-
-                        if (_head.compare_exchange_strong(head, next))
+                        if (head == tail)
                         {
-                            return next->pop();
+                            if (next == nullptr)
+                                throw queue_empty_exception();
+
+                            _tail.compare_exchange_strong(tail, next);
+                        }
+                        else
+                        {
+                            if (next == nullptr)
+                                throw queue_empty_exception();
+
+                            if (_head.compare_exchange_strong(head, next))
+                            {
+                                return next->pop();
+                            }
                         }
                     }
                 }
+                throw queue_empty_exception();
             }
-
-            throw queue_empty_exception();
         }
 
         /**
@@ -138,6 +155,9 @@ namespace async
             return count;
         }
 
+        /**
+         * @return True if the queue is empty, false otherwise.
+         */
         bool empty() const
         {
             return this->size() == 0;
@@ -199,12 +219,12 @@ namespace async
             return true;
         }
 
-        std::optional<T> try_pop()
+        T pop()
         {
             auto tail = _tail.load();
             auto head = _head.load();
             if (head == tail) // No data available.
-                return std::nullopt;
+                throw queue_empty_exception();
 
             // Check if the head is still consistent, if it is, we can just update the head, if not we retry the entire operation.
             if (!_head.compare_exchange_strong(head, (head + 1) % NodeCapacity))

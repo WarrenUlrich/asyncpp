@@ -17,21 +17,14 @@ namespace async
         task(handle_type handle) : _handle(handle) {}
 
         task(task &&other) noexcept : _handle(std::move(other._handle)) {}
-
+        
+        /**
+         * @brief Waits for the task to complete and retrieves the result.
+         * @throws any unhandled exception that may have occurred.
+         */
         T get()
         {
             return _handle.promise().get();
-        }
-
-        template <typename Rep, typename Period>
-        std::optional<T> try_get_for(std::chrono::duration<Rep, Period> &&duration) noexcept
-        {
-            return _handle.promise().try_get_for(std::move(duration));
-        }
-
-        std::optional<T> try_get_until(std::chrono::time_point<std::chrono::high_resolution_clock> &&time) noexcept
-        {
-            return _handle.promise().try_get_until(std::move(time));
         }
 
     private:
@@ -79,9 +72,9 @@ namespace async
         void return_value(T t) noexcept
         {
             _value = t;
-            _value_ready.release();
+            _value_ready = true;
         }
-
+        
         task<T> get_return_object()
         {
             return task<T>(std::coroutine_handle<promise_type>::from_promise(*this));
@@ -90,7 +83,7 @@ namespace async
         void unhandled_exception()
         {
             _exception = std::current_exception();
-            _value_ready.release();
+            _value_ready = true;
         }
 
         void rethrow_if_unhandled_exception()
@@ -101,12 +94,16 @@ namespace async
 
         /**
          * @brief Waits for the task to complete and returns the result.
+         * @return The result of the task.
+         * @throws any unhandled exception that may have occurred.
          */
         T get()
         {
-            _value_ready.acquire();
+            while(!_value_ready.load())
+                return get();
+
             rethrow_if_unhandled_exception();
-            return std::move(_value);
+            return _value;
         }
 
         /**
@@ -114,34 +111,16 @@ namespace async
          */
         std::optional<T> try_get() noexcept
         {
-            if (_value_ready.try_acquire())
-                return std::move(_value);
+            if(_value_ready)
+                return _value;
 
+            rethrow_if_unhandled_exception();
             return std::nullopt;
         }
-
-        /**
-         * @brief Tries to return the task's result for a duration, if it's not ready, immediately returns a nullopt.
-         * @param duration The duration to wait for the task to complete before returning a nullopt.
-         */
-        template <typename Rep, typename Period>
-        std::optional<T> try_get_for(std::chrono::duration<Rep, Period> &&duration) noexcept
-        {
-            if (_value_ready.try_acquire_for(duration))
-                return std::move(_value);
-
-            return std::nullopt;
-        }
-
-        /**
-         * @brief Tries to return the task's result until a specified time, if it isn't ready by then, immediately returns a nullopt.
-         * @param time The time to wait until before returning a nullopt.
-         */
-        std::optional<T> try_get_until(std::chrono::time_point<std::chrono::high_resolution_clock> &&time) noexcept;
 
     private:
         T _value;
-        std::binary_semaphore _value_ready{0};
+        std::atomic_bool _value_ready;
         std::exception_ptr _exception;
     };
 
@@ -156,6 +135,7 @@ namespace async
 
         constexpr void await_suspend(handle_type h) const noexcept
         {
+            // TODO: Implement thread pool scheduling.
             std::thread(h).detach();
         }
 

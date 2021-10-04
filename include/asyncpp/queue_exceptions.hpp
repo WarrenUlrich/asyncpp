@@ -6,18 +6,12 @@ namespace async
     class queue_empty_exception : public std::exception
     {
     public:
-        virtual const char *what() const throw()
-        {
-            return "Queue is empty";
-        }
+        queue_empty_exception() noexcept : std::exception("queue empty") {}
     };
 
     class queue_full_exception : public std::exception
     {
     public:
-        virtual const char *what() const throw()
-        {
-            return "Queue is full";
-        }
+        queue_full_exception() noexcept : std::exception("queue full") {}
     };
 }

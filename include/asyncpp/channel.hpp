@@ -14,11 +14,8 @@ namespace async
     class channel
     {
     public:
-        class reader;
-        class writer;
-
-        virtual bool write(T &&data) = 0;
-        virtual bool write(T const &data) = 0;
+        virtual void write(T &&data) = 0;
+        virtual void write(T const &data) = 0;
 
         virtual T read() = 0;
 
@@ -28,12 +25,16 @@ namespace async
         {
             this->_closed = true;
         }
-        
+
         bool closed() const
         {
             return this->_closed;
         }
-
+        
+        /**
+         * @brief Creates a shared pointer to a unbounded channel.
+         * @return A shared pointer to a unbounded channel.
+         */
         static std::shared_ptr<channel<T>> create_unbounded()
         {
             return std::make_shared<unbounded_channel<T>>();
@@ -44,31 +45,52 @@ namespace async
     };
 
     template <typename T>
-    class unbounded_channel : public channel<T>
+    class unbounded_channel final : public channel<T>
     {
     public:
         unbounded_channel() : _queue(queue<T>()) {}
 
-        bool write(T &&data) override
+        /**
+         * @brief Writes data to the channel.
+         * @param[in] data The data to write.
+         * @return True if the data was written, false otherwise.
+         * @throws channel_closed_exception If the channel is closed.
+         */
+        void write(T &&data) override
         {
-            if(this->closed())
+            if (this->closed())
                 throw channel_closed_exception();
-            
+
             _queue.push(data);
             _semaphore.release();
             return true;
         }
 
-        bool write(const T &data) override
+        /**
+         * @brief Writes data to the channel.
+         * @param[in] data The data to write.
+         * @return True if the data was written, false otherwise.
+         * @throws channel_closed_exception If the channel is closed.
+         */
+        void write(const T &data) override
         {
+            if (this->closed())
+                throw channel_closed_exception();
+
             _queue.push(data);
             _semaphore.release();
             return true;
         }
 
+        /**
+         * @brief Reads data from the channel.
+         * @return The data read.
+         * @throws channel_closed_exception If the channel is closed.
+         * @throws channel_empty_exception If the channel is empty.
+         */
         T read() override
         {
-            if(this->closed())
+            if (this->closed() && _queue.empty())
                 throw channel_closed_exception();
 
             _semaphore.acquire();
@@ -82,7 +104,7 @@ namespace async
 
                 return result;
             }
-            catch(const queue_empty_exception&)
+            catch (const queue_empty_exception &)
             {
                 throw channel_empty_exception();
             }
@@ -92,7 +114,7 @@ namespace async
         {
             return _queue.size();
         }
-        
+
     private:
         queue<T> _queue;
         std::binary_semaphore _semaphore{0};

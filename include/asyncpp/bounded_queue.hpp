@@ -1,14 +1,12 @@
 #pragma once
 #include <optional>
 #include <atomic>
-#include <iostream>
 #include "queue_exceptions.hpp"
 
 namespace async
 {
     /**
-     * @brief A bounded queue (FIFO).
-     * @details This queue is thread-safe and "lock-free", and is implemented using a circular buffer.
+     * @brief A fixed size lock-free queue implementation.
      */
     template <typename T, std::size_t NodeCapacity>
     class bounded_queue
@@ -54,7 +52,7 @@ namespace async
             // retry if we couldn't update the tail in time.
             if (!_tail.compare_exchange_strong(tail, (tail + 1) % NodeCapacity))
                 return try_push(item);
-
+            
             _data[tail] = item;
         }
 
