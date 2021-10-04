@@ -14,6 +14,8 @@ namespace async
     class channel
     {
     public:
+        channel() = default;
+
         virtual void write(T &&data) = 0;
         virtual void write(T const &data) = 0;
 
@@ -41,7 +43,7 @@ namespace async
         }
 
     protected:
-        std::atomic_bool _closed{false};
+        std::atomic_bool _closed;
     };
 
     template <typename T>
@@ -63,7 +65,6 @@ namespace async
 
             _queue.push(data);
             _semaphore.release();
-            return true;
         }
 
         /**
@@ -79,7 +80,6 @@ namespace async
 
             _queue.push(data);
             _semaphore.release();
-            return true;
         }
 
         /**
