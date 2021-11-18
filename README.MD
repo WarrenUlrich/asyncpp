@@ -5,7 +5,6 @@ Currently includes:
 * [`task<T>`](#taskt)
 * [`generator<T>`](#generatort)
 * [`queue<T>`](#queuet)
-* [`channel<T>`](#channelt)
 
 ## `task<T>`
 ```c++
@@ -207,61 +206,4 @@ int main()
          */
         bool empty() const ...        
     };
-```
-
-## `channel<T>`
-```c++
-    template <typename T>
-    class channel
-    {
-    public:
-        virtual void write(T &&data) = 0;
-        virtual void write(T const &data) = 0;
-
-        virtual T read() = 0;
-
-        virtual std::size_t size() const = 0;
-
-        void close() ...
-
-        bool closed() const ...
-        /**
-         * @brief Creates a shared pointer to a unbounded channel.
-         * @return A shared pointer to a unbounded channel.
-         */
-        static std::shared_ptr<channel<T>> create_unbounded() ...
-    };
-
-    template <typename T>
-    class unbounded_channel final : public channel<T>
-    {
-    public:
-        unbounded_channel() : _queue(queue<T>()) {}
-
-        /**
-         * @brief Writes data to the channel.
-         * @param[in] data The data to write.
-         * @return True if the data was written, false otherwise.
-         * @throws channel_closed_exception If the channel is closed.
-         */
-        void write(T &&data) override ...
-        
-        /**
-         * @brief Writes data to the channel.
-         * @param[in] data The data to write.
-         * @return True if the data was written, false otherwise.
-         * @throws channel_closed_exception If the channel is closed.
-         */
-        void write(const T &data) override ...
-
-        /**
-         * @brief Reads data from the channel.
-         * @return The data read.
-         * @throws channel_closed_exception If the channel is closed.
-         * @throws channel_empty_exception If the channel is empty.
-         */
-        T read() override ...
-
-        std::size_t size() const override ...
-    }
 ```

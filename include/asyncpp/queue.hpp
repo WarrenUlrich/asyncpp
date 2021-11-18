@@ -20,7 +20,7 @@ namespace async
     {
     public:
         queue() : _head(std::make_shared<ring_node>()), _tail(_head.load(std::memory_order_relaxed)) {}
-
+                                                                                                                                             
         /**
          * @brief Pushes an element to the queue
          * @param item The item to push
