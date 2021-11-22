@@ -23,7 +23,7 @@ namespace async::detail
             };
 
             int value;
-            
+
             std::exception_ptr exception;
 
             promise_type() = default;
@@ -131,10 +131,10 @@ namespace async::detail
 async::detail::async_main_coro async_main(int argc, char **argv);
 
 //macro that wraps around main function
-#define ASYNC_MAIN                                                               \
-    int main(int argc, char **argv)                                              \
-    {                                                                            \
-        auto coro = async_main(argc, argv);                                                  \
-        return coro.await_resume();                                                                \
-    }                                                                            \
+#define ASYNC_MAIN                          \
+    int main(int argc, char **argv)         \
+    {                                       \
+        auto coro = async_main(argc, argv); \
+        return coro.await_resume();         \
+    }                                       \
     async::detail::async_main_coro async_main \

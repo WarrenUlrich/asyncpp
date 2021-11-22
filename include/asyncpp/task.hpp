@@ -66,7 +66,7 @@ namespace async
         bool done() const noexcept;
 
         template <typename Func, typename... Args>
-        static task<T> run(const Func &func, const Args&... args);
+        static task<T> run(const Func &func, const Args &...args);
 
         ~task() noexcept;
 
@@ -185,9 +185,9 @@ namespace async
         return _handle.done();
     }
 
-    template<typename T>
-    template<typename Func, typename... Args>
-    task<T> task<T>::run(const Func &func, const Args&... args)
+    template <typename T>
+    template <typename Func, typename... Args>
+    task<T> task<T>::run(const Func &func, const Args &...args)
     {
         co_return func(args...);
     }

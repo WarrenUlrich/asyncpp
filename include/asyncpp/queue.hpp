@@ -26,14 +26,14 @@ namespace async
          * @param item The item to push
          * @throws queue_full_exception if the queue is full.
          */
-        void push(T &&item);
-
+        void push(const T &item);
+        
         /**
          * @brief Pushes an element to the queue
          * @param item The item to push
          * @throws queue_full_exception if the queue is full.
          */
-        void push(const T &item);
+        void push(T &&item);
 
         /**
          * @brief Pops an element from the queue

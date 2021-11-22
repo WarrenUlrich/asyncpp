@@ -261,7 +261,6 @@ namespace async
     generator<T>::generator(std::coroutine_handle<promise_type> h) noexcept
         : _handle(h)
     {
-
     }
 
     // template <typename T>
@@ -274,7 +273,6 @@ namespace async
     generator<T>::generator(generator &&other) noexcept
         : _handle(std::exchange(other._handle, nullptr))
     {
-        
     }
 
     template <typename T>
@@ -557,7 +555,7 @@ namespace async
     template <typename T>
     generator<T>::~generator() noexcept
     {
-        if(_handle)
+        if (_handle)
         {
             _handle.destroy();
         }
