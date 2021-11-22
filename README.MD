@@ -5,205 +5,226 @@ Currently includes:
 * [`task<T>`](#taskt)
 * [`generator<T>`](#generatort)
 * [`queue<T>`](#queuet)
+* [`bounded_queue<T>`](#bounded_queuet)
 
 ## `task<T>`
 ```c++
-    /**
-     * @brief A task is a coroutine that is executed on a seperate thread and returns a single result.
-    */
     template <typename T>
     class task
     {
     public:
-        task(task &&other) noexcept ...
-        
-        /**
-         * @brief Waits for the task to complete and retrieves the result.
-         * @throws any unhandled exception that may have occurred.
-         */
-        T get() ...
+        class promise_type
+        {
+        public:
+            class awaiter
+            {
+            public:
+                awaiter() = default;
+
+                constexpr bool await_ready() const noexcept;
+
+                constexpr void await_suspend(std::coroutine_handle<> h) noexcept;
+
+                constexpr void await_resume() noexcept;
+            };
+
+            promise_type()
+                : _value(T()), _unhandled_exception(nullptr)
+            {
+            }
+
+            awaiter initial_suspend() noexcept;
+
+            std::suspend_always final_suspend() noexcept;
+
+            void return_value(const T &value) noexcept;
+
+            void return_value(T &&value) noexcept;
+
+            task<T> get_return_object() noexcept;
+
+            void unhandled_exception() noexcept;
+
+            void rethrow_if_unhandled_exception() const;
+
+            T &&result();
+        };
+
+        task() = default;
+
+        task(std::coroutine_handle<promise_type> h) noexcept;
+
+        T &&result();
+
+        T &&await_resume();
+
+        constexpr bool await_suspend(std::coroutine_handle<> h) noexcept;
+
+        bool await_ready() const noexcept;
+
+        bool done() const noexcept;
+
+        template <typename Func, typename... Args>
+        static task<T> run(const Func &func, const Args&... args);
+
+        ~task() noexcept;
     };
-```
-## Examples
-```c++
-#include <iostream>
-#include <asyncpp/task.hpp>
-
-async::task<int> simulate_work()
-{
-    std::cout << "simulate_work: " << std::this_thread::get_id() << std::endl;
-    std::this_thread::sleep_for(std::chrono::seconds(10));
-    co_return 42;
-}
-
-async::task<> other_work()
-{
-    auto t = simulate_work();
-    auto res = co_await t; // We may use co_await inside of a coroutine.
-    co_return;
-}
-
-int main()
-{
-    auto t = simulate_work(); // simulate_work is executed in a separate thread
-    std::cout << "main: " << std::this_thread::get_id() << std::endl;
-    return t.get(); // Have to use get to wait for the task to finish, rather than co_await.
-}
 ```
 
 ## `generator<T>`
 ```c++
-    /**
-     * @brief Represents a sequence of values
-     */
-    template <class T>
+    template <typename T>
     class generator
     {
     public:
-        class promise_type;
-        using handle_type = std::coroutine_handle<promise_type>;
-        class iterator;
+        class promise_type
+        {
+        public:
+            promise_type() = default;
 
-        generator() = delete;
+            generator<T> get_return_object() noexcept;
 
-        generator(handle_type h)
+            std::suspend_always initial_suspend() const noexcept;
 
-        generator(generator<T> &&other) noexcept
+            std::suspend_always final_suspend() const noexcept;
 
-        generator<T> &operator=(generator<T> &&other) noexcept
+            void unhandled_exception() noexcept;
+
+            void rethrow_if_unhandled_exception() const;
+
+            void return_void();
+
+            std::suspend_always yield_value(const T &value) noexcept;
+
+            std::suspend_always yield_value(T &&value) noexcept;
+
+            T &get_value() noexcept;
+        };
+
+        class iterator
+        {
+        public:
+            iterator() = default;
+
+            iterator(std::coroutine_handle<promise_type> handle) noexcept;
+
+            iterator(const iterator &) = default;
+
+            iterator(iterator &&) = default;
+
+            iterator &operator=(const iterator &) = default;
+
+            iterator &operator=(iterator &&) = default;
+
+            bool operator==(const std::default_sentinel_t &) const noexcept;
+
+            bool operator!=(const std::default_sentinel_t &) const noexcept;
+
+            iterator &operator++() noexcept;
+
+            T &operator*() const noexcept;
+
+            T *operator->() const noexcept;
+        };
+
+        generator() = default;
+
+        generator(std::coroutine_handle<promise_type> h) noexcept;
 
         template <std::ranges::range Range>
-        generator(const Range &r) ...
+        generator(const Range &range) noexcept;
 
         template <std::ranges::range Range>
-        generator(Range &&r) ...
+        generator(Range &&range) noexcept;
 
-        iterator begin() ...
-        
-        std::default_sentinel_t end() const noexcept ...
-        
-        /**
-         * @brief Filters a sequence of values based on a predicate.
-         * @param pred The predicate to use to filter the sequence.
-         * @return A new enumerable sequence containing the filtered values.
-         */
+        generator(generator &&other) noexcept;
+
+        iterator begin() const noexcept;
+
+        std::default_sentinel_t end() const noexcept;
+
         template <class Predicate>
-        generator<T> where(Predicate &&pred) ...
+        bool all(const Predicate &pred) const;
 
-        /**
-         * @brief Projects a sequence of values into a new sequence of a different type.
-         * @param mapper The function to use to map the sequence.
-         * @return A new enumerable sequence containing the projected values.
-         */
-        template <class Mapper>
-        generator<std::invoke_result_t<Mapper, T &>> map(Mapper &&mapper) ...
-
-        /**
-         * @brief Returns the first value in a sequence.
-         * @return The first value in the sequence.
-         */
-        T first() ...
-
-        /**
-         * @brief Returns the first value in a sequence that satisfies a predicate.
-         * @param pred The predicate to use to filter the sequence.
-         * @return The first value in the sequence that satisfies the predicate.
-         */
         template <class Predicate>
-        T first(Predicate &&pred) ...
+        bool any(const Predicate &pred) const;
 
-        /**
-         * @brief Counts and returns the number of elements in a sequence.
-         * @return The number of elements in the sequence.
-         */
-        std::size_t count() ...
+        generator<T> append(const T &value);
 
-        /**
-         * @brief Enumerates the sequence and stores the results in a vector.
-         * @return The vector containing the results.
-         */
-        std::vector<T> collect() ...
-    };
-    
-    template <>
-    class generator<void>
-    {
-    public:
-        /**
-         * @brief Creates a new enumerable sequence of integers from the specified range.
-         * @param to The lower bound of the range.
-         * @param from The upper bound of the range.
-         * @return A new enumerable sequence of integers.
-         */
-        template <std::integral Integral>
-        static generator<Integral> range(Integral to, Integral from) ...
+        generator<T> append(T &&value);
+
+        generator<std::vector<T>> chunk(std::size_t size);
+
+        bool contains(const T &value) const;
+
+        template <std::integral Integral = std::size_t>
+        Integral count() const;
+
+        generator<T> distinct();
+
+        T element_at(std::size_t index) const;
+
+        T first() const;
+
+        T last() const;
+
+        generator<T> prepend(const T &value);
+
+        generator<T> prepend(T &&value);
+
+        generator<T> prepend(generator<T> &&other);
+
+        static generator<T> range(T from, T to);
+
+        static generator<T> repeat(const T &value, std::size_t count);
+
+        generator<T> reverse();
+
+        template <class Selector>
+        generator<std::invoke_result_t<Selector, const T &>> select(const Selector &selector);
+
+        template <class Predicate>
+        generator<T> where(const Predicate &pred);
+
+        ~generator() noexcept;
     };
 ```
-## Examples
 
-```c++
-    #include <iostream>
-    #include <asyncpp/generator.hpp>
-
-    async::generator<int> lots_of_numbers()
-    {
-        for (auto i = 0; i < 10000; ++i)
-            co_yield i; // support for co_yield in C++20
-    }
-
-    async::generator<int> lots_of_odd_numbers()
-    {
-        return lots_of_numbers().where([](int i) { return i % 2 == 1; }); // C# LINQ like functionality.
-    }
-
-    int main()
-    {
-        for(auto& i : lots_of_odd_numbers())
-            std::cout << i << '\n';
-
-        return 1;
-    }
-```
 ## `queue<T>`
 ```c++
-    /**
-     * @brief A lock-free queue implementation.
-     */
     template <typename T, std::size_t NodeCapacity = 1024>
     class queue
     {
     public:
-        queue() ...
+        queue();
 
-        /**
-         * @brief Pushes an element to the queue
-         * @param item The item to push
-         * @throws queue_full_exception if the queue is full.
-         */
-        void push(T &&item) ...
+        void push(T &&item);
 
-        /**
-         * @brief Pushes an element to the queue
-         * @param item The item to push
-         * @throws queue_full_exception if the queue is full.
-         */
-        void push(const T &item) ...
+        void push(const T &item);
 
-        /**
-         * @brief Pops an element from the queue
-         * @return The next item in the queue.
-         * @throws queue_empty_exception if the queue is empty.
-         */
-        T pop() ...
+        T pop();
 
-        /**
-         * @return The current size of the queue.
-         */
-        std::size_t size() const ...
-        
-        /**
-         * @return True if the queue is empty, false otherwise.
-         */
-        bool empty() const ...        
+        std::size_t size() const;
+
+        bool empty() const;
+    };
+
+```
+
+## `bounded_queue<T>`
+```c++
+    template <typename T, std::size_t NodeCapacity>
+    class bounded_queue
+    {
+    public:
+        bounded_queue(std::size_t capacity);
+
+        void push(const T &item);
+
+        void push(T &&item);
+
+        T pop();
+
+        std::size_t size() const;
     };
 ```

@@ -12,3 +12,5 @@ add_compile_options("/d2CoroOptsWorkaround")
 add_library("asyncpp" INTERFACE)
 
 target_include_directories("asyncpp" INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+
+add_subdirectory(local)

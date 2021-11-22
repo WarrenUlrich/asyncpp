@@ -1,298 +1,565 @@
 #pragma once
+#include <concepts>
 #include <coroutine>
+#include <stdexcept>
+#include <iterator>
 #include <vector>
-#include <iostream>
+#include <set>
 
 namespace async
 {
-    /**
-     * @brief Represents a sequence of values
-     */
-    template <class T>
+    template <typename T>
     class generator
     {
     public:
-        class promise_type;
-        using handle_type = std::coroutine_handle<promise_type>;
-        class iterator;
-
-        generator() = delete;
-
-        generator(handle_type h)
-            : _handle(h){
-
-              };
-
-        generator(generator<T> &&other) noexcept
-            : _handle(other._handle)
+        class promise_type
         {
-            other._handle = nullptr;
-        }
+        public:
+            promise_type() = default;
 
-        generator<T> &operator=(generator<T> &&other) noexcept
+            generator<T> get_return_object() noexcept;
+
+            std::suspend_always initial_suspend() const noexcept;
+
+            std::suspend_always final_suspend() const noexcept;
+
+            void unhandled_exception() noexcept;
+
+            void rethrow_if_unhandled_exception() const;
+
+            void return_void();
+
+            std::suspend_always yield_value(const T &value) noexcept;
+
+            std::suspend_always yield_value(T &&value) noexcept;
+
+            T &get_value() noexcept;
+
+        private:
+            T _value;
+            std::exception_ptr _exception;
+        };
+
+        class iterator
         {
-            _handle = other._handle;
-            other._handle = nullptr;
-            return *this;
-        }
+        public:
+            iterator() = default;
+
+            iterator(std::coroutine_handle<promise_type> handle) noexcept;
+
+            iterator(const iterator &) = default;
+
+            iterator(iterator &&) = default;
+
+            iterator &operator=(const iterator &) = default;
+
+            iterator &operator=(iterator &&) = default;
+
+            bool operator==(const std::default_sentinel_t &) const noexcept;
+
+            bool operator!=(const std::default_sentinel_t &) const noexcept;
+
+            iterator &operator++() noexcept;
+
+            T &operator*() const noexcept;
+
+            T *operator->() const noexcept;
+
+        private:
+            std::coroutine_handle<promise_type> _handle;
+        };
+
+        generator() = default;
+
+        generator(std::coroutine_handle<promise_type> h) noexcept;
 
         template <std::ranges::range Range>
-        generator(const Range &r)
-        {
-            *this = [](auto &range) -> generator<T>
-            {
-                for (auto &i : range)
-                    co_yield i;
-            }(r);
-        }
+        generator(const Range &range) noexcept;
 
         template <std::ranges::range Range>
-        generator(Range &&r)
-        {
-            *this = [](auto range) -> generator<T>
-            {
-                for (auto &i : range)
-                    co_yield i;
-            }(std::move(r));
-        }
+        generator(Range &&range) noexcept;
 
-        iterator begin()
-        {
-            if (this->_handle)
-                if (!this->_handle.done())
-                    this->_handle.resume();
+        // generator(const generator &) noexcept;
 
-            auto exception = std::current_exception();
-            if (exception)
-                std::rethrow_exception(exception);
+        generator(generator &&other) noexcept;
 
-            return iterator(this->_handle);
-        }
+        iterator begin() const noexcept;
 
-        std::default_sentinel_t end() const noexcept
-        {
-            return {};
-        }
+        std::default_sentinel_t end() const noexcept;
 
-        /**
-         * @brief Filters a sequence of values based on a predicate.
-         * @param pred The predicate to use to filter the sequence.
-         * @return A new enumerable sequence containing the filtered values.
-         */
         template <class Predicate>
-        generator<T> where(Predicate &&pred)
-        {
-            return where(std::move(*this), pred);
-        }
+        bool all(const Predicate &pred) const;
 
-        /**
-         * @brief Projects a sequence of values into a new sequence of a different type.
-         * @param mapper The function to use to map the sequence.
-         * @return A new enumerable sequence containing the projected values.
-         */
-        template <class Mapper>
-        generator<std::invoke_result_t<Mapper, T &>> map(Mapper &&mapper)
-        {
-            return map(std::move(*this), mapper);
-        }
-
-        /**
-         * @brief Returns the first value in a sequence.
-         * @return The first value in the sequence.
-         */
-        T first()
-        {
-            for (auto &i : *this)
-                return i;
-        }
-
-        /**
-         * @brief Returns the first value in a sequence that satisfies a predicate.
-         * @param pred The predicate to use to filter the sequence.
-         * @return The first value in the sequence that satisfies the predicate.
-         */
         template <class Predicate>
-        T first(Predicate &&pred)
-        {
-            return first(std::move(*this), pred);
-        }
+        bool any(const Predicate &pred) const;
 
-        /**
-         * @brief Counts and returns the number of elements in a sequence.
-         * @return The number of elements in the sequence.
-         */
-        std::size_t count()
-        {
-            std::size_t temp{};
-            for (auto &i : *this)
-                temp++;
-            return temp;
-        }
+        generator<T> append(const T &value);
 
-        /**
-         * @brief Enumerates the sequence and stores the results in a vector.
-         * @return The vector containing the results.
-         */
-        std::vector<T> collect()
-        {
-            std::vector<T> result{};
-            for (const auto &i : *this)
-                result.emplace_back(i);
-            return result;
-        }
+        generator<T> append(T &&value);
 
-        ~generator()
-        {
-            if (this->_handle)
-                this->_handle.destroy();
-        }
+        // generator<T> append(const generator<T> &other) const;
+
+        // template <typename = std::enable_if_t<std::is_integral_v<T>>>
+        // generator<T> average() const;
+
+        // template <typename = std::enable_if_t<std::is_floating_point_v<T>>>
+        // generator<T> average() const;
+
+        generator<std::vector<T>> chunk(std::size_t size);
+
+        // template <typename = std::enable_if_t<std::is_integral_v<T>>>
+        // generator<T> concat(const generator<T> &other) const;
+
+        bool contains(const T &value) const;
+
+        template <std::integral Integral = std::size_t>
+        Integral count() const;
+
+        generator<T> distinct();
+
+        T element_at(std::size_t index) const;
+
+        T first() const;
+
+        // TODO: group_by
+
+        // TODO: group_join
+
+        // generator<T> intersect(const generator<T> &other) const;
+
+        // TODO: join
+
+        T last() const;
+
+        // TODO: max
+
+        // TODO: min
+
+        // TODO: order_by
+
+        // TODO: order_by_descending
+
+        generator<T> prepend(const T &value);
+
+        generator<T> prepend(T &&value);
+
+        generator<T> prepend(generator<T> &&other);
+
+        static generator<T> range(T from, T to);
+
+        static generator<T> repeat(const T &value, std::size_t count);
+
+        generator<T> reverse();
+
+        template <class Selector>
+        generator<std::invoke_result_t<Selector, const T &>> select(const Selector &selector);
+
+        template <class Predicate>
+        generator<T> where(const Predicate &pred);
+
+        ~generator() noexcept;
 
     private:
-        handle_type _handle;
-
-        template <class Predicate>
-        static generator<T> where(generator<T> e, Predicate &&pred)
-        {
-            for (auto &i : e)
-                if (pred(i))
-                    co_yield i;
-        }
-
-        template <class Mapper>
-        static generator<std::invoke_result_t<Mapper, T &>> map(generator<T> e, Mapper &&m)
-        {
-            for (auto &i : e)
-                co_yield m(i);
-        }
-
-        template <class Predicate>
-        static T first(generator<T> e, Predicate &&pred)
-        {
-            for (auto &i : e)
-                if (pred(i))
-                    return i;
-        }
-    };
-
-    template <>
-    class generator<void>
-    {
-    public:
-        /**
-         * @brief Creates a new enumerable sequence of integers from the specified range.
-         * @param to The lower bound of the range.
-         * @param from The upper bound of the range.
-         * @return A new enumerable sequence of integers.
-         */
-        template <std::integral Integral>
-        static generator<Integral> range(Integral to, Integral from)
-        {
-            for (Integral i = to; i <= from; ++i)
-                co_yield i;
-        }
+        std::coroutine_handle<promise_type> _handle;
     };
 
     template <typename T>
-    class generator<T>::promise_type
+    generator<T> generator<T>::promise_type::get_return_object() noexcept
     {
-    public:
-        T current_value;
-        std::exception_ptr exception;
-
-        promise_type() : current_value{}, exception{nullptr} {}
-
-        auto get_return_object()
-        {
-            return generator{handle_type::from_promise(*this)};
-        }
-
-        auto initial_suspend()
-        {
-            return std::suspend_always{};
-        }
-
-        auto final_suspend() noexcept
-        {
-            return std::suspend_always();
-        }
-
-        void unhandled_exception()
-        {
-            exception = std::current_exception();
-        }
-
-        void rethrow_if_unhandled_exception()
-        {
-            if (exception)
-                std::rethrow_exception(exception);
-        }
-
-        void return_void()
-        {
-        }
-
-        auto yield_value(T const &value) noexcept
-        {
-            current_value = value;
-            return std::suspend_always{};
-        }
-
-        auto yield_value(T &&value) noexcept
-        {
-            current_value = std::move(value);
-            return std::suspend_always{};
-        }
-    };
+        return generator<T>(std::coroutine_handle<promise_type>::from_promise(*this));
+    }
 
     template <typename T>
-    class generator<T>::iterator
+    std::suspend_always generator<T>::promise_type::initial_suspend() const noexcept
     {
-    public:
-        iterator(handle_type handle)
-            : _handle(handle)
+        return {};
+    }
+
+    template <typename T>
+    std::suspend_always generator<T>::promise_type::final_suspend() const noexcept
+    {
+        return {};
+    }
+
+    template <typename T>
+    void generator<T>::promise_type::unhandled_exception() noexcept
+    {
+        _exception = std::current_exception();
+    }
+
+    template <typename T>
+    void generator<T>::promise_type::rethrow_if_unhandled_exception() const
+    {
+        if (_exception)
         {
+            std::rethrow_exception(_exception);
+        }
+    }
+
+    template <typename T>
+    void generator<T>::promise_type::return_void() {}
+
+    template <typename T>
+    std::suspend_always generator<T>::promise_type::yield_value(const T &value) noexcept
+    {
+        _value = value;
+        return {};
+    }
+
+    template <typename T>
+    std::suspend_always generator<T>::promise_type::yield_value(T &&value) noexcept
+    {
+        _value = std::move(value);
+        return {};
+    }
+
+    template <typename T>
+    T &generator<T>::promise_type::get_value() noexcept
+    {
+        return _value;
+    }
+
+    template <typename T>
+    generator<T>::iterator::iterator(std::coroutine_handle<promise_type> handle) noexcept
+        : _handle(handle)
+    {
+    }
+
+    template <typename T>
+    bool generator<T>::iterator::operator==(const std::default_sentinel_t &) const noexcept
+    {
+        return !_handle || _handle.done();
+    }
+
+    template <typename T>
+    bool generator<T>::iterator::operator!=(const std::default_sentinel_t &sent) const noexcept
+    {
+        return !(*this == sent);
+    }
+
+    template <typename T>
+    generator<T>::iterator &generator<T>::iterator::operator++() noexcept
+    {
+        _handle.resume();
+        _handle.promise().rethrow_if_unhandled_exception();
+        return *this;
+    }
+
+    template <typename T>
+    T &generator<T>::iterator::operator*() const noexcept
+    {
+        return _handle.promise().get_value();
+    }
+
+    template <typename T>
+    T *generator<T>::iterator::operator->() const noexcept
+    {
+        return std::addressof(_handle.promise().get_value());
+    }
+
+    template <typename T>
+    generator<T>::generator(std::coroutine_handle<promise_type> h) noexcept
+        : _handle(h)
+    {
+
+    }
+
+    // template <typename T>
+    // generator<T>::generator(const generator &other) noexcept
+    //     : _handle(other._handle)
+    // {
+    // }
+
+    template <typename T>
+    generator<T>::generator(generator &&other) noexcept
+        : _handle(std::exchange(other._handle, nullptr))
+    {
+        
+    }
+
+    template <typename T>
+    generator<T>::iterator generator<T>::begin() const noexcept
+    {
+        _handle.resume();
+        _handle.promise().rethrow_if_unhandled_exception();
+        return iterator(_handle);
+    }
+
+    template <typename T>
+    std::default_sentinel_t generator<T>::end() const noexcept
+    {
+        return {};
+    }
+
+    template <typename T>
+    template <typename Predicate>
+    bool generator<T>::all(const Predicate &pred) const
+    {
+        for (auto &&value : *this)
+        {
+            if (!pred(value))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    template <typename T>
+    template <typename Predicate>
+    bool generator<T>::any(const Predicate &pred) const
+    {
+        for (auto &&value : *this)
+        {
+            if (pred(value))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    template <typename T>
+    generator<T> generator<T>::append(const T &value)
+    {
+        return [](generator<T> gen_, T value_) -> generator<T>
+        {
+            for (auto &&v : gen_)
+            {
+                co_yield v;
+            }
+            co_yield value_;
+        }(std::move(*this), value);
+    }
+
+    template <typename T>
+    generator<T> generator<T>::append(T &&value)
+    {
+        return [](generator<T> gen_, T value_) -> generator<T>
+        {
+            for (auto &&v : gen_)
+            {
+                co_yield v;
+            }
+            co_yield value_;
+        }(std::move(*this), std::move(value));
+    }
+
+    template <typename T>
+    generator<std::vector<T>> generator<T>::chunk(std::size_t size)
+    {
+        return [](generator<T> gen_, std::size_t size_) -> generator<std::vector<T>>
+        {
+            std::vector<T> result;
+            result.reserve(size_);
+            for (auto &&v : gen_)
+            {
+                result.push_back(v);
+                if (result.size() == size_)
+                {
+                    co_yield std::move(result);
+                }
+            }
+        }(std::move(*this), size);
+    }
+
+    template <typename T>
+    bool generator<T>::contains(const T &value) const
+    {
+        for (auto &&v : *this)
+        {
+            if (v == value)
+            {
+                return true;
+            }
+        }
+    }
+
+    template <typename T>
+    template <std::integral Integral>
+    Integral generator<T>::count() const
+    {
+        Integral result = 0;
+        for (auto &&_ : *this)
+        {
+            ++result;
+        }
+        return result;
+    }
+
+    template <typename T>
+    generator<T> generator<T>::distinct()
+    {
+        return [](generator<T> gen_) -> generator<T>
+        {
+            std::set<T> seen;
+            for (auto &&v : gen_)
+            {
+                if (seen.insert(v).second)
+                {
+                    co_yield v;
+                }
+            }
+        }(std::move(*this));
+    }
+
+    template <typename T>
+    T generator<T>::element_at(std::size_t index) const
+    {
+        std::size_t i = 0;
+        for (auto &&v : *this)
+        {
+            if (i == index)
+            {
+                return v;
+            }
+            ++i;
         }
 
-        T &operator*() const
+        throw std::out_of_range("element_at");
+    }
+
+    template <typename T>
+    T generator<T>::first() const
+    {
+        return *begin();
+    }
+
+    template <typename T>
+    T generator<T>::last() const
+    {
+        auto it = std::begin(*this);
+        auto end = std::end(*this);
+        while (it != end)
         {
-            return this->_handle.promise().current_value;
+            ++it;
+            if (it == end)
+            {
+                return *it;
+            }
         }
 
-        T *operator->()
+        throw std::out_of_range("last");
+    }
+
+    template <typename T>
+    generator<T> generator<T>::prepend(const T &value)
+    {
+        return [](generator<T> gen_, T value_) -> generator<T>
         {
-            return &this->_handle.promise().current_value;
-        }
+            co_yield value_;
+            for (auto &&v : gen_)
+            {
+                co_yield v;
+            }
+        }(std::move(*this), value);
+    }
 
-        iterator &operator++()
+    template <typename T>
+    generator<T> generator<T>::prepend(T &&value)
+    {
+        return [](generator<T> gen_, T value_) -> generator<T>
         {
-            this->_handle.resume();
+            co_yield value_;
+            for (auto &&v : gen_)
+            {
+                co_yield v;
+            }
+        }(std::move(*this), std::move(value));
+    }
 
-            if (this->_handle.done())
-                this->_handle.promise().rethrow_if_unhandled_exception();
-            return *this;
-        }
-
-        friend bool operator==(const iterator &it, std::default_sentinel_t s) noexcept
+    template <typename T>
+    generator<T> generator<T>::prepend(generator<T> &&other)
+    {
+        return [](generator<T> gen_, generator<T> other_) -> generator<T>
         {
-            return !it._handle || it._handle.done();
-        }
+            for (auto &&v : other_)
+            {
+                co_yield v;
+            }
+            for (auto &&v : gen_)
+            {
+                co_yield v;
+            }
+        }(std::move(*this), std::move(other));
+    }
 
-        friend bool operator!=(const iterator &it, std::default_sentinel_t s) noexcept
+    template <typename T>
+    generator<T> generator<T>::range(T from, T to)
+    {
+        for (auto i = from; i <= to; ++i)
         {
-            return !(it == s);
+            co_yield i;
         }
+    }
 
-        friend bool operator==(std::default_sentinel_t s, const iterator &it) noexcept
+    template <typename T>
+    generator<T> generator<T>::repeat(const T &value, std::size_t count)
+    {
+        for (int i = 0; i <= count; ++i)
         {
-            return (it == s);
+            co_yield value;
         }
+    }
 
-        friend bool operator!=(std::default_sentinel_t s, const iterator &it) noexcept
+    template <typename T>
+    generator<T> generator<T>::reverse()
+    {
+        return [](generator<T> gen_) -> generator<T>
         {
-            return it != s;
-        }
+            std::vector<T> result;
 
-    private:
-        handle_type _handle;
-    };
+            for (auto &&v : gen_)
+            {
+                result.push_back(v);
+            }
+
+            auto it = std::rbegin(result);
+            auto end = std::rend(result);
+            while (it != end)
+            {
+                co_yield *it;
+                ++it;
+            }
+        }(std::move(*this));
+    }
+
+    template <typename T>
+    template <typename Selector>
+    generator<std::invoke_result_t<Selector, const T &>> generator<T>::select(const Selector &selector)
+    {
+        using result_type = std::invoke_result_t<Selector, const T &>;
+        return [](generator<T> gen_, Selector selector_) -> generator<result_type>
+        {
+            for (auto &&v : gen_)
+            {
+                co_yield selector_(v);
+            }
+        }(std::move(*this), selector);
+    }
+
+    template <typename T>
+    template <typename Predicate>
+    generator<T> generator<T>::where(const Predicate &predicate)
+    {
+        return [](generator<T> gen_, Predicate predicate_) -> generator<T>
+        {
+            for (auto &&v : gen_)
+            {
+                if (predicate_(v))
+                {
+                    co_yield v;
+                }
+            }
+        }(std::move(*this), predicate);
+    }
+
+    template <typename T>
+    generator<T>::~generator() noexcept
+    {
+        if(_handle)
+        {
+            _handle.destroy();
+        }
+    }
 }
