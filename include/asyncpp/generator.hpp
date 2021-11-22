@@ -76,12 +76,14 @@ namespace async
         template <std::ranges::range Range>
         generator(const Range &range) noexcept;
 
-        template <std::ranges::range Range>
-        generator(Range &&range) noexcept;
+        // template <std::ranges::range Range>
+        // generator(Range &&range) noexcept;
 
         // generator(const generator &) noexcept;
 
         generator(generator &&other) noexcept;
+
+        generator<T> &operator=(generator &&other) noexcept;
 
         iterator begin() const noexcept;
 
@@ -263,16 +265,43 @@ namespace async
     {
     }
 
+    template <typename T>
+    template <std::ranges::range Range>
+    generator<T>::generator(const Range &range) noexcept
+    {
+        *this = [](const Range &range_) -> generator<T>
+        {
+            for (const auto &value : range_)
+            {
+                co_yield value;
+            }
+        }(range);
+    }
+
     // template <typename T>
-    // generator<T>::generator(const generator &other) noexcept
-    //     : _handle(other._handle)
+    // template <std::ranges::range Range>
+    // generator<T>::generator(Range &&range) noexcept
     // {
+    //     *this = [](Range range_) -> generator<T>
+    //     {
+    //         for (const auto &value : range_)
+    //         {
+    //             co_yield value;
+    //         }
+    //     }(std::move(range));
     // }
 
     template <typename T>
     generator<T>::generator(generator &&other) noexcept
         : _handle(std::exchange(other._handle, nullptr))
     {
+    }
+
+    template <typename T>
+    generator<T> &generator<T>::operator=(generator &&other) noexcept
+    {
+        _handle = std::exchange(other._handle, nullptr);
+        return *this;
     }
 
     template <typename T>
