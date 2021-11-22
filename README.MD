@@ -194,10 +194,10 @@ Currently includes:
     {
     public:
         queue();
-
-        void push(T &&item);
-
+        
         void push(const T &item);
+        
+        void push(T &&item);
 
         T pop();
 
