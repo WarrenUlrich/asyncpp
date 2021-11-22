@@ -76,8 +76,8 @@ namespace async
         template <std::ranges::range Range>
         generator(const Range &range) noexcept;
 
-        // template <std::ranges::range Range>
-        // generator(Range &&range) noexcept;
+        template <std::ranges::range Range>
+        generator(Range &&range) noexcept;
 
         // generator(const generator &) noexcept;
 
@@ -158,6 +158,9 @@ namespace async
 
         template <class Predicate>
         generator<T> where(const Predicate &pred);
+
+        template <class Func>
+        void for_each(const Func &func);
 
         ~generator() noexcept;
 
@@ -579,6 +582,16 @@ namespace async
                 }
             }
         }(std::move(*this), predicate);
+    }
+
+    template <typename T>
+    template <typename Func>
+    void generator<T>::for_each(const Func &func)
+    {
+        for (auto &&v : *this)
+        {
+            func(v);
+        }
     }
 
     template <typename T>
