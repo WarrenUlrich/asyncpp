@@ -28,10 +28,7 @@ Currently includes:
                 constexpr void await_resume() noexcept;
             };
 
-            promise_type()
-                : _value(T()), _unhandled_exception(nullptr)
-            {
-            }
+            promise_type();
 
             awaiter initial_suspend() noexcept;
 
@@ -197,10 +194,10 @@ Currently includes:
     {
     public:
         queue();
-
-        void push(T &&item);
-
+        
         void push(const T &item);
+        
+        void push(T &&item);
 
         T pop();
 
