@@ -25,10 +25,7 @@ namespace async
                 constexpr void await_resume() noexcept;
             };
 
-            promise_type()
-                : _value(T()), _unhandled_exception(nullptr)
-            {
-            }
+            promise_type() = default;
 
             awaiter initial_suspend() noexcept;
 
@@ -252,8 +249,8 @@ namespace async
 
         bool done() const noexcept;
 
-        template <typename Func>
-        task<decltype(Func())> run(const Func &func);
+        template <typename Func, typename... Args>
+        task<void> run(const Func &func, const Args &...args);
 
         ~task() noexcept;
 
@@ -330,6 +327,13 @@ namespace async
     bool task<void>::done() const noexcept
     {
         return _handle.done();
+    }
+
+    template <typename Func, typename... Args>
+    task<void> task<void>::run(const Func &func, const Args &...args)
+    {
+        func(args...);
+        co_return;
     }
 
     task<void>::~task() noexcept

@@ -27,7 +27,7 @@ namespace async
          * @throws queue_full_exception if the queue is full.
          */
         void push(const T &item);
-        
+
         /**
          * @brief Pushes an element to the queue
          * @param item The item to push

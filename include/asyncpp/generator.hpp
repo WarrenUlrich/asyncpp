@@ -99,7 +99,7 @@ namespace async
 
         generator<T> append(T &&value);
 
-        // generator<T> append(const generator<T> &other) const;
+        generator<T> append(generator<T> &&other) const;
 
         // template <typename = std::enable_if_t<std::is_integral_v<T>>>
         // generator<T> average() const;
@@ -373,6 +373,22 @@ namespace async
             }
             co_yield value_;
         }(std::move(*this), std::move(value));
+    }
+
+    template <typename T>
+    generator<T> generator<T>::append(generator<T> &&other)
+    {
+        return [](generator<T> gen_, generator<T> other_) -> generator<T>
+        {
+            for (auto &&v : gen_)
+            {
+                co_yield v;
+            }
+            for (auto &&v : other_)
+            {
+                co_yield v;
+            }
+        }(std::move(*this), std::move(other));
     }
 
     template <typename T>
