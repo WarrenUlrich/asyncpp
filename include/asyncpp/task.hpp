@@ -1,8 +1,9 @@
 #pragma once
 #include <exception>
-#include <future>
 #include <coroutine>
-#include <iostream>
+#include <thread>
+#include <semaphore>
+#include "aggregate_exception.hpp"
 
 namespace async
 {
@@ -46,6 +47,7 @@ namespace async
         private:
             T _value;
             std::exception_ptr _unhandled_exception;
+            std::binary_semaphore _ready{0};
         };
 
         task() = default;
@@ -62,8 +64,7 @@ namespace async
 
         bool done() const noexcept;
 
-        template <typename Func, typename... Args>
-        static task<T> run(const Func &func, const Args &...args);
+        static task<T> run(const auto &func, const auto &...args);
 
         ~task() noexcept;
 
@@ -74,6 +75,7 @@ namespace async
     template <typename T>
     constexpr bool task<T>::promise_type::awaiter::await_ready() const noexcept
     {
+
         return false;
     }
 
@@ -81,7 +83,7 @@ namespace async
     constexpr void task<T>::promise_type::awaiter::await_suspend(std::coroutine_handle<> h) noexcept
     {
         // TODO: scheduling
-        std::async(std::launch::async, h);
+        std::thread(h).detach();
     }
 
     template <typename T>
@@ -105,12 +107,14 @@ namespace async
     void task<T>::promise_type::return_value(const T &value) noexcept
     {
         _value = value;
+        _ready.release();
     }
 
     template <typename T>
     void task<T>::promise_type::return_value(T &&value) noexcept
     {
         _value = std::move(value);
+        _ready.release();
     }
 
     template <typename T>
@@ -137,6 +141,7 @@ namespace async
     template <typename T>
     T &&task<T>::promise_type::result()
     {
+        _ready.acquire();
         rethrow_if_unhandled_exception();
         return std::move(_value);
     }
@@ -150,11 +155,6 @@ namespace async
     template <typename T>
     T &&task<T>::result()
     {
-        // TODO: better way to sync this.
-        while (!_handle.done())
-        {
-        }
-
         return _handle.promise().result();
     }
 
@@ -183,8 +183,7 @@ namespace async
     }
 
     template <typename T>
-    template <typename Func, typename... Args>
-    task<T> task<T>::run(const Func &func, const Args &...args)
+    task<T> task<T>::run(const auto &func, const auto &...args)
     {
         co_return func(args...);
     }
@@ -194,10 +193,7 @@ namespace async
     {
         if (_handle)
         {
-            if (_handle.done())
-            {
-                _handle.destroy();
-            }
+            _handle.destroy();
         }
     }
 
@@ -217,7 +213,7 @@ namespace async
 
                 void await_suspend(std::coroutine_handle<> h) noexcept;
 
-                constexpr void await_resume() noexcept;
+                constexpr void await_resume() const noexcept;
             };
 
             promise_type() = default;
@@ -234,23 +230,36 @@ namespace async
 
             void rethrow_if_unhandled_exception() const;
 
+            void wait();
+
         private:
             std::exception_ptr _unhandled_exception;
+            std::binary_semaphore _ready{0};
         };
 
         task() = default;
+
         task(std::coroutine_handle<promise_type> h) noexcept;
+
+        task(task &&other) noexcept;
+
+        std::suspend_never operator co_await() const;
 
         void await_resume() noexcept;
 
-        constexpr bool await_suspend(std::coroutine_handle<> h) noexcept;
+        bool await_suspend(std::coroutine_handle<> h) const noexcept;
 
         bool await_ready() const noexcept;
 
         bool done() const noexcept;
 
-        template <typename Func, typename... Args>
-        task<void> run(const Func &func, const Args &...args);
+        void wait() const;
+
+        static task<void> run(const auto &func, const auto &...args);
+
+        static task<void> when_all(const std::initializer_list<task<void>> &tasks);
+
+        static task<void> when_all(const std::ranges::range auto &tasks);
 
         ~task() noexcept;
 
@@ -266,10 +275,10 @@ namespace async
     void task<void>::promise_type::awaiter::await_suspend(std::coroutine_handle<> h) noexcept
     {
         // TODO: scheduling
-        std::async(std::launch::async, h);
+        std::thread(h).detach();
     }
 
-    constexpr void task<void>::promise_type::awaiter::await_resume() noexcept
+    constexpr void task<void>::promise_type::awaiter::await_resume() const noexcept
     {
     }
 
@@ -285,6 +294,7 @@ namespace async
 
     void task<void>::promise_type::return_void() noexcept
     {
+        _ready.release();
     }
 
     task<void> task<void>::promise_type::get_return_object() noexcept
@@ -305,18 +315,33 @@ namespace async
         }
     }
 
+    void task<void>::promise_type::wait()
+    {
+        _ready.acquire();
+        rethrow_if_unhandled_exception();
+    }
+
     task<void>::task(std::coroutine_handle<promise_type> h) noexcept
         : _handle(h)
     {
     }
 
-    void task<void>::await_resume() noexcept
+    task<void>::task(task &&other) noexcept
+        : _handle(std::exchange(other._handle, nullptr))
     {
     }
 
-    constexpr bool task<void>::await_suspend(std::coroutine_handle<> h) noexcept
+    std::suspend_never task<void>::operator co_await() const
     {
-        return false;
+        wait();
+        return {};
+    }
+
+    void task<void>::await_resume() noexcept {}
+
+    bool task<void>::await_suspend(std::coroutine_handle<> h) const noexcept
+    {
+        return true;
     }
 
     bool task<void>::await_ready() const noexcept
@@ -329,10 +354,45 @@ namespace async
         return _handle.done();
     }
 
-    template <typename Func, typename... Args>
-    task<void> task<void>::run(const Func &func, const Args &...args)
+    void task<void>::wait() const
+    {
+        _handle.promise().wait();
+    }
+
+    task<void> task<void>::run(const auto &func, const auto &...args)
     {
         func(args...);
+        co_return;
+    }
+
+    task<void> task<void>::when_all(const std::initializer_list<task<void>> &tasks)
+    {
+        for (const auto &task : tasks)
+        {
+            co_await task;
+        }
+        co_return;
+    }
+
+    task<void> task<void>::when_all(const std::ranges::range auto &tasks)
+    {
+        std::vector<std::exception_ptr> exceptions;
+
+        for (const auto &t : tasks)
+        {
+            try
+            {
+                co_await t;
+            }
+            catch (const std::exception &e)
+            {
+                exceptions.push_back(std::make_exception_ptr(e));
+            }
+        }
+
+        if (!exceptions.empty())
+            throw new aggregate_exception(std::move(exceptions));
+
         co_return;
     }
 
@@ -340,10 +400,7 @@ namespace async
     {
         if (_handle)
         {
-            if (_handle.done())
-            {
-                _handle.destroy();
-            }
+            _handle.destroy();
         }
     }
 }

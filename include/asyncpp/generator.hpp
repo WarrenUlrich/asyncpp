@@ -5,6 +5,7 @@
 #include <iterator>
 #include <vector>
 #include <set>
+#include <iostream>
 
 namespace async
 {
@@ -73,13 +74,9 @@ namespace async
 
         generator(std::coroutine_handle<promise_type> h) noexcept;
 
-        template <std::ranges::range Range>
-        generator(const Range &range) noexcept;
+        generator(const std::ranges::range auto &range) noexcept;
 
-        template <std::ranges::range Range>
-        generator(Range &&range) noexcept;
-
-        // generator(const generator &) noexcept;
+        generator(std::ranges::range auto &&range) noexcept;
 
         generator(generator &&other) noexcept;
 
@@ -89,17 +86,15 @@ namespace async
 
         std::default_sentinel_t end() const noexcept;
 
-        template <class Predicate>
-        bool all(const Predicate &pred) const;
+        bool all(const std::invocable<T &&> auto &pred) const;
 
-        template <class Predicate>
-        bool any(const Predicate &pred) const;
+        bool any(const std::invocable<T &&> auto &pred) const;
 
         generator<T> append(const T &value);
 
         generator<T> append(T &&value);
 
-        generator<T> append(generator<T> &&other) const;
+        generator<T> append(generator<T> &&other);
 
         // template <typename = std::enable_if_t<std::is_integral_v<T>>>
         // generator<T> average() const;
@@ -153,14 +148,12 @@ namespace async
 
         generator<T> reverse();
 
-        template <class Selector>
-        generator<std::invoke_result_t<Selector, const T &>> select(const Selector &selector);
+        template <typename Selector, typename ResultType = std::invoke_result_t<Selector, T &&>>
+        generator<ResultType> select(const Selector &selector);
 
-        template <class Predicate>
-        generator<T> where(const Predicate &pred);
+        generator<T> where(const std::invocable<const T &> auto &pred);
 
-        template <class Func>
-        void for_each(const Func &func);
+        void for_each(const std::invocable<T&&> auto &func);
 
         ~generator() noexcept;
 
@@ -269,10 +262,9 @@ namespace async
     }
 
     template <typename T>
-    template <std::ranges::range Range>
-    generator<T>::generator(const Range &range) noexcept
+    generator<T>::generator(const std::ranges::range auto &range) noexcept
     {
-        *this = [](const Range &range_) -> generator<T>
+        *this = [](const std::ranges::range auto &range_) -> generator<T>
         {
             for (const auto &value : range_)
             {
@@ -282,15 +274,21 @@ namespace async
     }
 
     template <typename T>
-    template <std::ranges::range Range>
-    generator<T>::generator(Range &&range) noexcept
+    generator<T>::generator(std::ranges::range auto &&range) noexcept
     {
-        *this = [](Range range_) -> generator<T>
+        *this = [](std::ranges::range auto range_) -> generator<T>
         {
-            for (const auto &value : range_)
+            std::cout << "bruh\n";
+            auto iter = std::make_move_iterator(std::ranges::begin(range_));
+            auto end = std::make_move_iterator(std::ranges::end(range_));
+            while (iter != end)
             {
-                co_yield value;
+                co_yield *iter++;
             }
+            // for (auto &&value : range_)
+            // {
+            //     co_yield std::move(value);
+            // }
         }(std::move(range));
     }
 
@@ -322,12 +320,11 @@ namespace async
     }
 
     template <typename T>
-    template <typename Predicate>
-    bool generator<T>::all(const Predicate &pred) const
+    bool generator<T>::all(const std::invocable<T &&> auto &pred) const
     {
         for (auto &&value : *this)
         {
-            if (!pred(value))
+            if (!pred(std::move(value)))
             {
                 return false;
             }
@@ -336,12 +333,11 @@ namespace async
     }
 
     template <typename T>
-    template <typename Predicate>
-    bool generator<T>::any(const Predicate &pred) const
+    bool generator<T>::any(const std::invocable<T &&> auto &pred) const
     {
         for (auto &&value : *this)
         {
-            if (pred(value))
+            if (pred(std::move(value)))
             {
                 return true;
             }
@@ -571,42 +567,39 @@ namespace async
     }
 
     template <typename T>
-    template <typename Selector>
-    generator<std::invoke_result_t<Selector, const T &>> generator<T>::select(const Selector &selector)
+    template <typename Selector, typename ResultType = std::invoke_result_t<Selector, T &&>>
+    generator<ResultType> generator<T>::select(const Selector &selector)
     {
-        using result_type = std::invoke_result_t<Selector, const T &>;
-        return [](generator<T> gen_, Selector selector_) -> generator<result_type>
+        return [](generator<T> gen_, Selector selector_) -> generator<ResultType>
         {
             for (auto &&v : gen_)
             {
-                co_yield selector_(v);
+                co_yield selector_(std::move(v));
             }
         }(std::move(*this), selector);
     }
 
     template <typename T>
-    template <typename Predicate>
-    generator<T> generator<T>::where(const Predicate &predicate)
+    generator<T> generator<T>::where(const std::invocable<const T &> auto &predicate)
     {
-        return [](generator<T> gen_, Predicate predicate_) -> generator<T>
+        return [](generator<T> gen_, auto predicate_) -> generator<T>
         {
             for (auto &&v : gen_)
             {
                 if (predicate_(v))
                 {
-                    co_yield v;
+                    co_yield std::move(v);
                 }
             }
         }(std::move(*this), predicate);
     }
 
     template <typename T>
-    template <typename Func>
-    void generator<T>::for_each(const Func &func)
+    void generator<T>::for_each(const std::invocable<T&&> auto &func)
     {
         for (auto &&v : *this)
         {
-            func(v);
+            func(std::move(v));
         }
     }
 
