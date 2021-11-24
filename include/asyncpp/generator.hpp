@@ -5,7 +5,6 @@
 #include <iterator>
 #include <vector>
 #include <set>
-#include <iostream>
 
 namespace async
 {
@@ -96,11 +95,8 @@ namespace async
 
         generator<T> append(generator<T> &&other);
 
-        // template <typename = std::enable_if_t<std::is_integral_v<T>>>
-        // generator<T> average() const;
-
-        // template <typename = std::enable_if_t<std::is_floating_point_v<T>>>
-        // generator<T> average() const;
+        template<std::integral U = T>
+        double average();
 
         generator<std::vector<T>> chunk(std::size_t size);
 
@@ -153,7 +149,7 @@ namespace async
 
         generator<T> where(const std::invocable<const T &> auto &pred);
 
-        void for_each(const std::invocable<T&&> auto &func);
+        void for_each(const std::invocable<T &&> auto &func);
 
         ~generator() noexcept;
 
@@ -278,17 +274,12 @@ namespace async
     {
         *this = [](std::ranges::range auto range_) -> generator<T>
         {
-            std::cout << "bruh\n";
             auto iter = std::make_move_iterator(std::ranges::begin(range_));
             auto end = std::make_move_iterator(std::ranges::end(range_));
             while (iter != end)
             {
-                co_yield *iter++;
+                co_yield std::move(*iter++);
             }
-            // for (auto &&value : range_)
-            // {
-            //     co_yield std::move(value);
-            // }
         }(std::move(range));
     }
 
@@ -385,6 +376,20 @@ namespace async
                 co_yield v;
             }
         }(std::move(*this), std::move(other));
+    }
+
+    template <typename T>
+    template <std::integral U = T>
+    double generator<T>::average()
+    {
+        std::size_t count = 0;
+        double sum = 0;
+        for (auto &&value : *this)
+        {
+            sum += value;
+            ++count;
+        }
+        return sum / count;
     }
 
     template <typename T>
@@ -595,7 +600,7 @@ namespace async
     }
 
     template <typename T>
-    void generator<T>::for_each(const std::invocable<T&&> auto &func)
+    void generator<T>::for_each(const std::invocable<T &&> auto &func)
     {
         for (auto &&v : *this)
         {
