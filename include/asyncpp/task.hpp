@@ -44,6 +44,8 @@ namespace async
 
             T &&result();
 
+            void wait();
+
         private:
             T _value;
             std::exception_ptr _unhandled_exception;
@@ -65,6 +67,8 @@ namespace async
         bool done() const noexcept;
 
         static task<T> run(const auto &func, const auto &...args);
+
+        void wait() const;
 
         ~task() noexcept;
 
@@ -147,6 +151,13 @@ namespace async
     }
 
     template <typename T>
+    void task<T>::promise_type::wait()
+    {
+        _ready.acquire();
+        rethrow_if_unhandled_exception();
+    }
+
+    template <typename T>
     task<T>::task(std::coroutine_handle<promise_type> h) noexcept
         : _handle(h)
     {
@@ -186,6 +197,12 @@ namespace async
     task<T> task<T>::run(const auto &func, const auto &...args)
     {
         co_return func(args...);
+    }
+
+    template <typename T>
+    void task<T>::wait() const
+    {
+        _handle.promise().wait();
     }
 
     template <typename T>

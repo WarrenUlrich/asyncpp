@@ -1,4 +1,5 @@
 #pragma once
+#include <stdexcept>
 
 namespace async
 {
@@ -9,7 +10,7 @@ namespace async
 
         aggregate_exception(const std::vector<std::exception_ptr> &exceptions) noexcept;
         aggregate_exception(std::vector<std::exception_ptr> &&exceptions) noexcept;
-        
+
         const char *what() const noexcept override;
     };
 

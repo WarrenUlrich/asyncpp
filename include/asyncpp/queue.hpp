@@ -2,70 +2,39 @@
 #include <atomic>
 #include <memory>
 #include <optional>
-#include "queue_exceptions.hpp"
 
 namespace async
 {
-    /**
-     * This is a "lock-free" implementation of a queue, it's implemented as a 
-     * linked list of ring buffers, it operates on one buffer at a time until it becomes
-     * full, then the tail moves on and creates a new buffer.
-     */
-
-    /**
-     * @brief A lock-free queue implementation.
-     */
     template <typename T, std::size_t NodeCapacity = 1024>
     class queue
     {
     public:
         queue() : _head(std::make_shared<ring_node>()), _tail(_head.load(std::memory_order_relaxed)) {}
 
-        /**
-         * @brief Pushes an element to the queue
-         * @param item The item to push
-         * @throws queue_full_exception if the queue is full.
-         */
-        void push(const T &item);
+        void push(const T &item) noexcept;
 
-        /**
-         * @brief Pushes an element to the queue
-         * @param item The item to push
-         * @throws queue_full_exception if the queue is full.
-         */
-        void push(T &&item);
+        void push(T &&item) noexcept;
 
-        /**
-         * @brief Pops an element from the queue
-         * @return The next item in the queue.
-         * @throws queue_empty_exception if the queue is empty.
-         */
-        T pop();
+        std::optional<T> try_pop() noexcept;
 
-        /**
-         * @return The current size of the queue.
-         */
-        std::size_t size() const;
+        std::size_t size() const noexcept;
 
-        /**
-         * @return True if the queue is empty, false otherwise.
-         */
-        bool empty() const;
+        bool empty() const noexcept;
 
     private:
         class ring_node
         {
         public:
-            std::atomic<std::shared_ptr<ring_node>> _next;
+            std::atomic<std::shared_ptr<ring_node>> next;
 
             ring_node() : _head(0), _tail(0) {}
 
-            bool try_push(const T &item);
-            bool try_push(T &&item);
+            bool try_push(const T &item) noexcept;
+            bool try_push(T &&item) noexcept;
 
-            std::optional<T> try_pop();
+            std::optional<T> try_pop() noexcept;
 
-            std::size_t size() const;
+            std::size_t size() const noexcept;
 
         private:
             T _data[NodeCapacity];
@@ -78,7 +47,7 @@ namespace async
     };
 
     template <typename T, std::size_t NodeCapacity>
-    void queue<T, NodeCapacity>::push(const T &item)
+    void queue<T, NodeCapacity>::push(const T &item) noexcept
     {
         auto tail = _tail.load();
         if (tail->try_push(item)) // Buffer still usable?
@@ -110,7 +79,7 @@ namespace async
     }
 
     template <typename T, std::size_t NodeCapacity>
-    void queue<T, NodeCapacity>::push(T &&item)
+    void queue<T, NodeCapacity>::push(T &&item) noexcept
     {
         auto tail = _tail.load();
         if (tail->try_push(item)) // Buffer still usable?
@@ -142,50 +111,44 @@ namespace async
     }
 
     template <typename T, std::size_t NodeCapacity>
-    T queue<T, NodeCapacity>::pop()
+    std::optional<T> queue<T, NodeCapacity>::try_pop() noexcept
     {
-        try
+        auto head = _head.load();
+        auto item = head->try_pop();
+        if(item)
+            return *item;
+
+        while (true)
         {
             auto head = _head.load();
-            auto item = head->pop();
-            return item;
-        }
-        catch (queue_empty_exception &)
-        {
-            // Slow route, we need to move to the next buffer
-            while (true)
+            auto tail = _tail.load();
+            const auto next = head->next.load();
+
+            if (head == _head.load())
             {
-                auto head = _head.load();
-                auto tail = _tail.load();
-                const auto next = head->next.load();
-
-                if (head == _head.load())
+                if (head == tail)
                 {
-                    if (head == tail)
-                    {
-                        if (next == nullptr)
-                            throw queue_empty_exception();
+                    if (next == nullptr)
+                        return std::nullopt;
 
-                        _tail.compare_exchange_strong(tail, next);
-                    }
-                    else
-                    {
-                        if (next == nullptr)
-                            throw queue_empty_exception();
+                    _tail.compare_exchange_strong(tail, next);
+                }
+                else
+                {
+                    if (next == nullptr)
+                        return std::nullopt;
 
-                        if (_head.compare_exchange_strong(head, next))
-                        {
-                            return next->pop();
-                        }
+                    if (_head.compare_exchange_strong(head, next))
+                    {
+                        return next->try_pop();
                     }
                 }
             }
-            throw queue_empty_exception();
         }
     }
 
     template <typename T, std::size_t NodeCapacity>
-    std::size_t queue<T, NodeCapacity>::size() const
+    std::size_t queue<T, NodeCapacity>::size() const noexcept
     {
         auto head = _head.load();
         std::size_t count = 0;
@@ -198,13 +161,13 @@ namespace async
     }
 
     template <typename T, std::size_t NodeCapacity>
-    bool queue<T, NodeCapacity>::empty() const
+    bool queue<T, NodeCapacity>::empty() const noexcept
     {
         return this->size() == 0;
     }
 
     template <typename T, std::size_t NodeCapacity>
-    bool queue<T, NodeCapacity>::ring_node::try_push(const T &item)
+    bool queue<T, NodeCapacity>::ring_node::try_push(const T &item) noexcept
     {
         auto tail = _tail.load();
         auto head = _head.load();
@@ -215,7 +178,7 @@ namespace async
 
         // Check if the tail is still consistent, if it is, we can just update the tail, if not we retry the entire operation.
         if (!_tail.compare_exchange_strong(tail, (tail + 1) % NodeCapacity))
-            return try_push(std::forward<T>(item));
+            return try_push(item);
 
         // Succeeded, so we're safe to update the data.
         _data[tail] = std::move(item);
@@ -223,7 +186,7 @@ namespace async
     }
 
     template <typename T, std::size_t NodeCapacity>
-    bool queue<T, NodeCapacity>::ring_node::try_push(T &&item)
+    bool queue<T, NodeCapacity>::ring_node::try_push(T &&item) noexcept
     {
         auto tail = _tail.load();
         auto head = _head.load();
@@ -234,7 +197,7 @@ namespace async
 
         // Check if the tail is still consistent, if it is, we can just update the tail, if not we retry the entire operation.
         if (!_tail.compare_exchange_strong(tail, (tail + 1) % NodeCapacity))
-            return try_push(std::forward<T>(item));
+            return try_push(std::move(item));
 
         // Succeeded, so we're safe to update the data.
         _data[tail] = std::move(item);
@@ -242,7 +205,7 @@ namespace async
     }
 
     template <typename T, std::size_t NodeCapacity>
-    std::optional<T> queue<T, NodeCapacity>::ring_node::try_pop()
+    std::optional<T> queue<T, NodeCapacity>::ring_node::try_pop() noexcept
     {
         auto tail = _tail.load();
         auto head = _head.load();
@@ -251,7 +214,7 @@ namespace async
 
         // Check if the head is still consistent, if it is, we can just update the head, if not we retry the entire operation.
         if (!_head.compare_exchange_strong(head, (head + 1) % NodeCapacity))
-            return pop();
+            return try_pop();
 
         // Succeeeded, so we're safe to grab the data.
         auto item = std::move(_data[head]);
@@ -259,7 +222,7 @@ namespace async
     }
 
     template <typename T, std::size_t NodeCapacity>
-    std::size_t queue<T, NodeCapacity>::ring_node::size() const
+    std::size_t queue<T, NodeCapacity>::ring_node::size() const noexcept
     {
         auto tail = _tail.load();
         auto head = _head.load();
