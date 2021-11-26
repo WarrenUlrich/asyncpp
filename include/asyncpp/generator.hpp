@@ -5,7 +5,9 @@
 #include <iterator>
 #include <vector>
 #include <set>
-
+#include <execution>
+#include "task.hpp"
+#include <iostream>
 namespace async
 {
     template <typename T>
@@ -153,6 +155,7 @@ namespace async
 
         generator<T> where(std::invocable<const T &> auto &&pred);
 
+        template <auto ExecutionMode = std::execution::seq>
         void for_each(std::invocable<T &&> auto &&func);
 
         std::vector<T> to_vector();
@@ -587,7 +590,7 @@ namespace async
             {
                 co_yield selector_(std::move(v));
             }
-        }(std::move(*this), selector);
+        }(std::move(*this), std::move(selector));
     }
 
     template <typename T>
@@ -643,11 +646,29 @@ namespace async
     }
 
     template <typename T>
+    template <auto ExecutionMode>
     void generator<T>::for_each(std::invocable<T &&> auto &&func)
     {
-        for (auto &&v : *this)
+        if constexpr (std::is_same_v<decltype(ExecutionMode), std::execution::parallel_policy>)
         {
-            func(std::move(v));
+            std::vector<task<void>> tasks;
+            for (auto &&v : *this)
+            {
+                tasks.emplace_back(std::move(task<void>::run(func, v)));
+            }
+
+            task<void>::when_all(tasks).wait();
+        }
+        else if (std::is_same_v<decltype(ExecutionMode), std::execution::sequenced_policy>)
+        {
+            for (auto &&v : *this)
+            {
+                func(std::move(v));
+            }
+        }
+        else
+        {
+            static_assert(false, "Invalid execution mode");
         }
     }
 
