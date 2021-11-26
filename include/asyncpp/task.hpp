@@ -4,7 +4,6 @@
 #include <thread>
 #include <semaphore>
 #include "aggregate_exception.hpp"
-#include <iostream>
 
 namespace async
 {

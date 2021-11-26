@@ -7,7 +7,7 @@
 #include <set>
 #include <execution>
 #include "task.hpp"
-#include <iostream>
+
 namespace async
 {
     template <typename T>
