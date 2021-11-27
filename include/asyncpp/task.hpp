@@ -46,6 +46,8 @@ namespace async
 
         task(task &&other) noexcept;
 
+        task &operator=(task &&other) noexcept;
+
         T get_result();
 
         T await_resume();
@@ -156,12 +158,20 @@ namespace async
     {
     }
 
+
     template <typename T>
     task<T>::task(task &&other) noexcept
         : _handle(std::exchange(other._handle, nullptr))
     {
     }
 
+    template <typename T>
+    task<T> &task<T>::operator=(task &&other) noexcept
+    {
+        _handle = std::exchange(other._handle, nullptr);
+        return *this;
+    }
+    
     template <typename T>
     T task<T>::get_result()
     {
